@@ -84,13 +84,13 @@ export function PainelBlogAdm({ postsIniciais, estatisticas }: Props) {
     <SecaoPainel>
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <CabecalhoPagina
-          titulo="Blog VIGMED"
-          descricao="Crie artigos públicos em blog.vigmed.com.br com SEO e estatísticas de leitura."
+          titulo="Blog VIGMED (em desenvolvimento)"
+          descricao="Seção em desenvolvimento. A criação de novos posts estará disponível em breve."
         />
-        <Link href={ROTAS.adm.blogNovo} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/80">
+        <Button type="button" disabled className="h-8 gap-1.5 px-2.5">
           <Plus size={16} />
-          Novo post
-        </Link>
+          Novo post (em desenvolvimento)
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
