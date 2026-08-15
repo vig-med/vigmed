@@ -1,6 +1,6 @@
 import type { NomeIcone } from '@/lib/icones-animados'
 import type { AmbienteApp } from '@/lib/ambiente'
-import { ROTAS, urlBlogPublico } from '@/lib/rotas'
+import { hrefPublico, ROTAS } from '@/lib/rotas'
 import type { PapelUsuario } from '@/types'
 
 export interface SubRota {
@@ -28,15 +28,15 @@ export interface ItemNavGrupo {
 export type ItemNavegacao = ItemNavLink | ItemNavGrupo
 
 const NAVEGACAO_ADM: ItemNavegacao[] = [
-  { id: 'painel', tipo: 'link', rotulo: 'Painel', icone: 'layout-dashboard', href: ROTAS.adm.painel },
+  { id: 'painel', tipo: 'link', rotulo: 'Painel', icone: 'layout-dashboard', href: hrefPublico(ROTAS.adm.painel) },
   {
     id: 'gestao',
     tipo: 'grupo',
     rotulo: 'Gestão',
     icone: 'building',
     filhos: [
-      { href: ROTAS.adm.empresas, rotulo: 'Empresas', icone: 'building' },
-      { href: ROTAS.adm.usuarios, rotulo: 'Usuários', icone: 'users' },
+      { href: hrefPublico(ROTAS.adm.empresas), rotulo: 'Empresas', icone: 'building' },
+      { href: hrefPublico(ROTAS.adm.usuarios), rotulo: 'Pessoas', icone: 'users' },
     ],
   },
   {
@@ -45,10 +45,9 @@ const NAVEGACAO_ADM: ItemNavegacao[] = [
     rotulo: 'Conteúdo',
     icone: 'file-text',
     filhos: [
-      { href: ROTAS.adm.documentos, rotulo: 'Documentos', icone: 'file-text' },
-      { href: ROTAS.adm.comunicados, rotulo: 'Comunicados', icone: 'megaphone' },
-      { href: ROTAS.adm.blog, rotulo: 'Blog', icone: 'newspaper' },
-      { href: ROTAS.adm.mensagens, rotulo: 'Mensagens', icone: 'message' },
+      { href: hrefPublico(ROTAS.adm.documentos), rotulo: 'Documentos', icone: 'file-text' },
+      { href: hrefPublico(ROTAS.adm.comunicados), rotulo: 'Comunicados', icone: 'megaphone' },
+      { href: hrefPublico(ROTAS.adm.mensagens), rotulo: 'Mensagens', icone: 'message' },
     ],
   },
   {
@@ -57,36 +56,29 @@ const NAVEGACAO_ADM: ItemNavegacao[] = [
     rotulo: 'Sistema',
     icone: 'shield',
     filhos: [
-      { href: ROTAS.adm.relatorios, rotulo: 'Relatórios', icone: 'chart-bar' },
-      { href: ROTAS.adm.auditoria, rotulo: 'Auditoria', icone: 'shield' },
-      { href: ROTAS.adm.atualizacoes, rotulo: 'Atualizações', icone: 'sparkles' },
-      { href: ROTAS.adm.configuracoes, rotulo: 'Configurações', icone: 'monitor' },
+      { href: hrefPublico(ROTAS.adm.relatorios), rotulo: 'Relatórios', icone: 'chart-bar' },
+      { href: hrefPublico(ROTAS.adm.auditoria), rotulo: 'Auditoria', icone: 'shield' },
+      { href: hrefPublico(ROTAS.adm.atualizacoes), rotulo: 'Atualizações', icone: 'sparkles' },
+      { href: hrefPublico(ROTAS.adm.configuracoes), rotulo: 'Configurações', icone: 'monitor' },
     ],
   },
-  { id: 'perfil', tipo: 'link', rotulo: 'Perfil', icone: 'user', href: ROTAS.adm.perfil },
+  { id: 'perfil', tipo: 'link', rotulo: 'Perfil', icone: 'user', href: hrefPublico(ROTAS.adm.perfil) },
 ]
 
 const NAVEGACAO_DOCS: ItemNavegacao[] = [
-  { id: 'painel', tipo: 'link', rotulo: 'Início', icone: 'layout-dashboard', href: ROTAS.docs.painel },
-  { id: 'documentos', tipo: 'link', rotulo: 'Documentos', icone: 'file-text', href: ROTAS.docs.documentos },
+  { id: 'painel', tipo: 'link', rotulo: 'Início', icone: 'layout-dashboard', href: hrefPublico(ROTAS.docs.painel) },
+  { id: 'documentos', tipo: 'link', rotulo: 'Documentos', icone: 'file-text', href: hrefPublico(ROTAS.docs.documentos) },
   {
     id: 'comunicacao',
     tipo: 'grupo',
     rotulo: 'Comunicação',
     icone: 'megaphone',
     filhos: [
-      { href: ROTAS.docs.comunicados, rotulo: 'Comunicados', icone: 'megaphone' },
-      { href: ROTAS.docs.mensagens, rotulo: 'Mensagens', icone: 'message' },
+      { href: hrefPublico(ROTAS.docs.comunicados), rotulo: 'Comunicados', icone: 'megaphone' },
+      { href: hrefPublico(ROTAS.docs.mensagens), rotulo: 'Mensagens', icone: 'message' },
     ],
   },
-  {
-    id: 'blog-ext',
-    tipo: 'link',
-    rotulo: 'Blog',
-    icone: 'newspaper',
-    href: urlBlogPublico(),
-  },
-  { id: 'perfil', tipo: 'link', rotulo: 'Perfil', icone: 'user', href: ROTAS.docs.perfil },
+  { id: 'perfil', tipo: 'link', rotulo: 'Perfil', icone: 'user', href: hrefPublico(ROTAS.docs.perfil) },
 ]
 
 /** Monta árvore de navegação conforme ambiente e papel do usuário */
@@ -100,9 +92,9 @@ export function obterNavegacao(ambiente: AmbienteApp, papel: PapelUsuario): Item
     itens.splice(idxPerfil, 0, {
       id: 'equipe',
       tipo: 'link',
-      rotulo: 'Usuários',
+      rotulo: 'Pessoas',
       icone: 'users',
-      href: ROTAS.docs.usuarios,
+      href: hrefPublico(ROTAS.docs.usuarios),
     })
   }
 

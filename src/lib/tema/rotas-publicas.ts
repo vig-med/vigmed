@@ -24,8 +24,22 @@ function pathTemTemaClaro(path: string): boolean {
   )
 }
 
-function ehRotaPainel(path: string): boolean {
-  return path.startsWith('/adm/') || path.startsWith('/docs/')
+function ehHostPainel(host: string): boolean {
+  const dominioRaiz = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br'
+  if (host === `adm.${dominioRaiz}` || host === `docs.${dominioRaiz}`) return true
+  const partes = host.split('.')
+  if (partes.length >= 3) {
+    const sub = partes[0]
+    return sub === 'adm' || sub === 'docs'
+  }
+  return false
+}
+
+function ehRotaPainel(path: string, host: string): boolean {
+  if (path.startsWith('/adm/') || path.startsWith('/docs/')) return true
+  // Em prod no subdomínio: /painel, /empresas, etc. (não auth pública)
+  if (ehHostPainel(host) && !pathTemTemaClaro(path)) return true
+  return false
 }
 
 /** Rotas e hosts que nunca herdam tema escuro salvo no painel */
@@ -33,7 +47,7 @@ export function ehRotaPublica(pathname?: string, hostname?: string): boolean {
   const path = pathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/')
   const host = (hostname ?? (typeof window !== 'undefined' ? window.location.hostname : '')).split(':')[0]
 
-  if (ehRotaPainel(path)) return false
+  if (ehRotaPainel(path, host)) return false
 
   if (pathTemTemaClaro(path)) return true
 
@@ -72,9 +86,6 @@ export function gerarScriptTemaInicial(
     var host = window.location.hostname.split(':')[0];
     var root = ${JSON.stringify(dominioRaiz)};
     var prefixos = ${prefixos};
-    function pathPainel(p) {
-      return p.indexOf('/adm/') === 0 || p.indexOf('/docs/') === 0;
-    }
 
     function pathClaro(p) {
       if (p === '/') return true;
@@ -85,7 +96,23 @@ export function gerarScriptTemaInicial(
       return false;
     }
 
-    var publico = !pathPainel(path) && (pathClaro(path) || host === 'blog.' + root);
+    function hostPainel(h) {
+      if (h === 'adm.' + root || h === 'docs.' + root) return true;
+      var partes = h.split('.');
+      if (partes.length >= 3) {
+        var sub = partes[0];
+        return sub === 'adm' || sub === 'docs';
+      }
+      return false;
+    }
+
+    function pathPainel(p, h) {
+      if (p.indexOf('/adm/') === 0 || p.indexOf('/docs/') === 0) return true;
+      if (hostPainel(h) && !pathClaro(p)) return true;
+      return false;
+    }
+
+    var publico = !pathPainel(path, host) && (pathClaro(path) || host === 'blog.' + root);
 
     if (publico) {
       document.documentElement.dataset.theme = 'light';

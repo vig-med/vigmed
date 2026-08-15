@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Mail, Eye, EyeOff } from 'lucide-react'
 import { Button, Input, Card, CardContent, Separator } from '@/components/ui'
-import { entrarComEmail, entrarComGoogle } from '@/lib/auth/acoes'
+import { entrarComEmail } from '@/lib/auth/acoes'
+import { entrarComGoogleNoCliente } from '@/lib/auth/google-cliente'
 import { ROTAS } from '@/lib/rotas'
 
 interface PropsFormularioLogin {
@@ -50,8 +51,9 @@ export function FormularioLogin({
   }
 
   function aoLoginGoogle() {
+    definirErro('')
     iniciarTransicao(async () => {
-      const resultado = await entrarComGoogle()
+      const resultado = await entrarComGoogleNoCliente()
       if (resultado?.erro) definirErro(resultado.erro)
     })
   }

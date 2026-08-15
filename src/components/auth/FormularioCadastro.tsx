@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { Suspense, useEffect, useState, useTransition } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { UserPlus } from 'lucide-react'
 import { Button, Input, Card, CardContent, Separator } from '@/components/ui'
-import { cadastrarComEmail, entrarComGoogle } from '@/lib/auth/acoes'
+import { cadastrarComEmail } from '@/lib/auth/acoes'
+import { entrarComGoogleNoCliente } from '@/lib/auth/google-cliente'
 import { ROTAS } from '@/lib/rotas'
-import toast from 'react-hot-toast'
 
-/** Cadastro com convite; e-mail deve estar autorizado previamente */
-export function FormularioCadastro() {
+function FormularioCadastroInterno() {
+  const parametros = useSearchParams()
   const [nome, definirNome] = useState('')
   const [email, definirEmail] = useState('')
   const [senha, definirSenha] = useState('')
@@ -17,10 +18,15 @@ export function FormularioCadastro() {
   const [erro, definirErro] = useState('')
   const [pendente, iniciarTransicao] = useTransition()
 
+  useEffect(() => {
+    const e = parametros.get('email')
+    if (e) definirEmail(e)
+  }, [parametros])
+
   function aoLoginGoogle() {
     definirErro('')
     iniciarTransicao(async () => {
-      const resultado = await entrarComGoogle()
+      const resultado = await entrarComGoogleNoCliente()
       if (resultado?.erro) definirErro(resultado.erro)
     })
   }
@@ -41,11 +47,7 @@ export function FormularioCadastro() {
 
     iniciarTransicao(async () => {
       const resultado = await cadastrarComEmail(email, senha, nome)
-      if (resultado?.erro) {
-        definirErro(resultado.erro)
-      } else if (resultado?.sucesso) {
-        toast.success(resultado.mensagem ?? 'Cadastro realizado!')
-      }
+      if (resultado?.erro) definirErro(resultado.erro)
     })
   }
 
@@ -61,7 +63,7 @@ export function FormularioCadastro() {
           <div className="mb-8 text-center">
             <h1 className="text-xl font-semibold">Ativar conta</h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Use o e-mail autorizado. Entre com Google ou defina sua senha aqui.
+              Use o e-mail autorizado. Ao criar a conta, você já entra automaticamente.
             </p>
           </div>
 
@@ -110,5 +112,14 @@ export function FormularioCadastro() {
         </CardContent>
       </Card>
     </motion.div>
+  )
+}
+
+/** Cadastro com convite; e-mail pode vir de /cadastro?email= */
+export function FormularioCadastro() {
+  return (
+    <Suspense fallback={<div className="w-full max-w-sm mx-auto p-6 text-sm text-muted-foreground text-center">Carregando...</div>}>
+      <FormularioCadastroInterno />
+    </Suspense>
   )
 }

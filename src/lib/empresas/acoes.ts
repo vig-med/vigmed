@@ -37,10 +37,14 @@ export async function salvarEmpresa(dados: {
   armazenamentoLimite?: number
 }) {
   const perfil = await exigirAutenticacao(['administrador'])
-  const supabase = await criarClienteSupabaseServidor()
+  const admin = criarClienteSupabaseAdmin()
 
   const cnpjLimpo = dados.cnpj.replace(/\D/g, '')
-  const payload = {
+  if (cnpjLimpo.length < 11) {
+    return { erro: 'CNPJ inválido.' }
+  }
+
+  const payload: Record<string, unknown> = {
     razao_social: dados.razaoSocial.trim(),
     nome_fantasia: dados.nomeFantasia.trim(),
     cnpj: cnpjLimpo,
@@ -48,12 +52,22 @@ export async function salvarEmpresa(dados: {
     telefone: dados.telefone?.trim() || null,
     responsavel: dados.responsavel?.trim() || null,
     status: dados.status ?? 'ativo',
-    armazenamento_limite: dados.armazenamentoLimite ?? 5368709120,
+  }
+
+  if (dados.armazenamentoLimite != null) {
+    payload.armazenamento_limite = dados.armazenamentoLimite
+  } else if (!dados.id) {
+    const { obterLimitePadraoEmpresaBytes } = await import('@/lib/configuracoes/acoes')
+    payload.armazenamento_limite = await obterLimitePadraoEmpresaBytes()
   }
 
   if (dados.id) {
-    const { error } = await supabase.from('empresas').update(payload).eq('id', dados.id)
-    if (error) return { erro: 'Não foi possível atualizar a empresa.' }
+    const { error } = await admin.from('empresas').update(payload).eq('id', dados.id)
+    if (error) {
+      console.error('[salvarEmpresa] update', error.code, error.message)
+      if (error.code === '23505') return { erro: 'CNPJ já cadastrado em outra empresa.' }
+      return { erro: 'Não foi possível atualizar a empresa.' }
+    }
     await registrarAuditoria({
       acao: 'atualizacao_empresa',
       usuarioId: perfil.id,
@@ -62,8 +76,11 @@ export async function salvarEmpresa(dados: {
       detalhes: { nome: payload.nome_fantasia },
     })
   } else {
-    const { data, error } = await supabase.from('empresas').insert(payload).select('id').single()
-    if (error) return { erro: error.code === '23505' ? 'CNPJ já cadastrado.' : 'Erro ao criar empresa.' }
+    const { data, error } = await admin.from('empresas').insert(payload).select('id').single()
+    if (error) {
+      console.error('[salvarEmpresa] insert', error.code, error.message)
+      return { erro: error.code === '23505' ? 'CNPJ já cadastrado.' : 'Erro ao criar empresa.' }
+    }
     await registrarAuditoria({
       acao: 'criacao_empresa',
       usuarioId: perfil.id,
@@ -125,7 +142,7 @@ export async function listarEmpresasResumo() {
   const supabase = await criarClienteSupabaseServidor()
   const { data } = await supabase
     .from('empresas')
-    .select('id, nome_fantasia, status')
+    .select('id, nome_fantasia, status, armazenamento_limite')
     .eq('status', 'ativo')
     .order('nome_fantasia')
   return data ?? []

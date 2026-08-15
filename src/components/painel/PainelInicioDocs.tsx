@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, hrefPublico } from '@/lib/rotas'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel, CartaoPainel } from '@/components/layout/SecaoPainel'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
@@ -56,12 +56,12 @@ export function PainelInicioDocs({
 
       <RevelarScroll atraso={0.05}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--color-border)', borderRadius: '0.75rem', overflow: 'hidden' }}>
-          <Link href={ROTAS.docs.documentos} style={{ display: 'block', padding: '0.9rem 1rem', background: 'var(--color-surface)', textDecoration: 'none', transition: 'background 0.15s' }}
+          <Link href={hrefPublico(ROTAS.docs.documentos)} style={{ display: 'block', padding: '0.9rem 1rem', background: 'var(--color-surface)', textDecoration: 'none', transition: 'background 0.15s' }}
             className="hover:bg-(--color-surface-2)">
             <p style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-1)' }}>Documentos</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-3)', marginTop: '0.2rem' }}>Enviar e baixar arquivos da empresa</p>
           </Link>
-          <Link href={ROTAS.docs.comunicados} style={{ display: 'block', padding: '0.9rem 1rem', background: 'var(--color-surface)', textDecoration: 'none', transition: 'background 0.15s' }}
+          <Link href={hrefPublico(ROTAS.docs.comunicados)} style={{ display: 'block', padding: '0.9rem 1rem', background: 'var(--color-surface)', textDecoration: 'none', transition: 'background 0.15s' }}
             className="hover:bg-(--color-surface-2)">
             <p style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-1)' }}>Comunicados</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-3)', marginTop: '0.2rem' }}>Avisos da administração</p>
@@ -75,7 +75,7 @@ export function PainelInicioDocs({
             {documentosRecentes.map((doc) => (
               <Link
                 key={doc.id}
-                href={ROTAS.docs.documentos}
+                href={hrefPublico(ROTAS.docs.documentos)}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0', borderBottom: '1px solid var(--color-border)', textDecoration: 'none', transition: 'opacity 0.15s' }}
                 className="last:border-0 hover:opacity-75"
               >
@@ -94,7 +94,7 @@ export function PainelInicioDocs({
               </p>
             )}
           </div>
-          <Button variant="ghost" size="sm" className="mt-2 w-full h-7 text-xs" render={<Link href={ROTAS.docs.documentos} />}>
+          <Button variant="ghost" size="sm" className="mt-2 w-full h-7 text-xs" render={<Link href={hrefPublico(ROTAS.docs.documentos)} />}>
             Ver todos
           </Button>
         </CartaoPainel>

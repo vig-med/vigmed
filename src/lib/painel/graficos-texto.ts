@@ -100,7 +100,7 @@ export function blocoSparkline(itens: ItemGrafico[]): string {
   return `${linha}\n${rotulos}\n${valores}`
 }
 
-/** Barra única de progresso em caracteres (0–100%) */
+/** Barra única de progresso em caracteres (0-100%) */
 export function barraProgresso(pct: number, largura = 36): string {
   const preenchido = Math.round((Math.min(Math.max(pct, 0), 100) / 100) * largura)
   return `[${'█'.repeat(preenchido)}${'·'.repeat(Math.max(0, largura - preenchido))}] ${pct}%`

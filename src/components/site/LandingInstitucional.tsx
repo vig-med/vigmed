@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { IconeAnimado } from '@/components/ui/icone-animado'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
 import { ROTAS } from '@/lib/rotas'
+import { obterUrlBaseDoAmbiente } from '@/lib/ambiente-edge'
 import type { NomeIcone } from '@/lib/icones-animados'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +41,7 @@ const PILARES_VIGMED: { icone: NomeIcone; titulo: string; texto: string }[] = [
   {
     icone: 'shield',
     titulo: 'Acesso fechado',
-    texto: 'Entrada só com e-mail autorizado por convite.',
+    texto: 'Entrada só com e-mail pré-autorizado pelo administrador.',
   },
   {
     icone: 'monitor',
@@ -49,9 +50,21 @@ const PILARES_VIGMED: { icone: NomeIcone; titulo: string; texto: string }[] = [
   },
 ]
 const AMBIENTES = [
-  { host: 'vigmed.com.br', rotulo: 'Institucional', href: '/' },
-  { host: 'adm.vigmed.com.br', rotulo: 'Administração', href: '/entrar' },
-  { host: 'docs.vigmed.com.br', rotulo: 'Portal empresas', href: '/entrar' },
+  {
+    host: process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br',
+    rotulo: 'Institucional',
+    href: '/',
+  },
+  {
+    host: `adm.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br'}`,
+    rotulo: 'Administração',
+    href: obterUrlBaseDoAmbiente('adm'),
+  },
+  {
+    host: `docs.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br'}`,
+    rotulo: 'Portal empresas',
+    href: obterUrlBaseDoAmbiente('docs'),
+  },
 ] as const
 
 const PILARES = [
@@ -117,7 +130,7 @@ export function LandingInstitucional() {
               </div>
               <div className="landing-grade-intro-linha landing-grade-intro-linha--acesso">
                 <p className="landing-intro-acesso">
-                  Convite por e-mail?{' '}
+                  E-mail autorizado?{' '}
                   <Link href={ROTAS.auth.cadastro}>Ativar conta</Link>
                   {' ou '}
                   <Link href={ROTAS.auth.entrar}>entrar</Link>.
@@ -146,7 +159,7 @@ export function LandingInstitucional() {
           {[
             ...[
               { valor: '3', rotulo: 'áreas do sistema' },
-              { valor: 'Convite', rotulo: 'acesso por e-mail' },
+              { valor: 'Convite', rotulo: 'acesso por e-mail autorizado' },
               { valor: 'Log', rotulo: 'de downloads e logins' },
               { valor: 'RLS', rotulo: 'isolamento por empresa' },
             ].map((item) => ({ tipo: 'stat' as const, ...item })),

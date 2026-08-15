@@ -11,7 +11,7 @@ import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { Button, Input, Label, Textarea } from '@/components/ui'
 import { criarPostBlog, atualizarPostBlog } from '@/lib/blog/acoes'
 import { gerarSlug } from '@/lib/blog/gerar-slug'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, hrefPublico } from '@/lib/rotas'
 import { obterUrlBaseDoAmbiente } from '@/lib/ambiente'
 import type { PostBlog } from '@/types'
 import type { StatusPostBlog } from '@/lib/blog/tipos'
@@ -112,7 +112,7 @@ export function FormularioPostBlog({ post }: Props) {
 
       toast.success(publicar ? 'Post publicado!' : 'Rascunho salvo.')
       if (!editando && 'id' in resultado && resultado.id) {
-        router.push(ROTAS.adm.blogEditar(resultado.id))
+        router.push(hrefPublico(ROTAS.adm.blogEditar(resultado.id)))
       } else {
         router.refresh()
       }
@@ -123,7 +123,7 @@ export function FormularioPostBlog({ post }: Props) {
     <SecaoPainel className="max-w-5xl mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
         <div className="flex items-center gap-3">
-          <Link href={ROTAS.adm.blog} className="btn-icon-glass">
+          <Link href={hrefPublico(ROTAS.adm.blog)} className="btn-icon-glass">
             <ArrowLeft size={16} />
           </Link>
           <CabecalhoPagina

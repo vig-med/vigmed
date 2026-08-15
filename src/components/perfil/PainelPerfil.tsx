@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { ConfiguracaoAparencia } from '@/components/perfil/ConfiguracaoAparencia'
 import { Avatar, Button, Card, CardContent, Input } from '@/components/ui'
+import { useAcaoPendente } from '@/hooks/use-acao-pendente'
 import { atualizarPerfil } from '@/lib/perfil/preferencias'
 import type { Perfil } from '@/types'
 
@@ -16,12 +17,12 @@ interface Props {
 
 export function PainelPerfil({ perfil }: Props) {
   const router = useRouter()
+  const { pendente, executar } = useAcaoPendente<'salvar'>()
   const [nome, definirNome] = useState(perfil.nome_completo)
   const [telefone, definirTelefone] = useState(perfil.telefone ?? '')
-  const [pendente, iniciarTransicao] = useTransition()
 
   function salvar() {
-    iniciarTransicao(async () => {
+    void executar('salvar', async () => {
       const resultado = await atualizarPerfil({ nomeCompleto: nome, telefone })
       if (resultado.erro) {
         toast.error(resultado.erro)
@@ -54,7 +55,7 @@ export function PainelPerfil({ perfil }: Props) {
             <Input label="E-mail" value={perfil.email} disabled />
             <Input label="Telefone" value={telefone} onChange={(e) => definirTelefone(e.target.value)} />
 
-            <Button variant="primary" loading={pendente} onClick={salvar}>
+            <Button variant="primary" loading={pendente('salvar')} onClick={salvar}>
               Salvar alterações
             </Button>
           </CardContent>

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import { Search, Send } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, CheckCheck, Search, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Avatar, Button } from '@/components/ui'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
+import { useMensagensNaoLidas } from '@/contexts/MensagensNaoLidasContext'
+import { useAcaoPendente } from '@/hooks/use-acao-pendente'
 import {
   enviarMensagem,
   garantirConversaEmpresa,
@@ -23,6 +24,7 @@ interface ConversaItem {
   empresa_id: string
   assunto: string | null
   atualizado_em: string
+  nao_lidas?: number
   mensagens?: { corpo: string; criado_em: string; remetente_id: string }[]
 }
 
@@ -31,6 +33,8 @@ interface MensagemItem {
   corpo: string
   criado_em: string
   remetente_id: string
+  lida?: boolean
+  lida_em?: string | null
   perfis?: { nome_completo: string } | null
 }
 
@@ -41,8 +45,9 @@ interface Props {
 }
 
 export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
-  const router = useRouter()
   const [busca, definirBusca] = useState('')
+  const { pendente, executar } = useAcaoPendente<'enviar'>()
+  const { total: totalNaoLidas, definirTotal, atualizar: atualizarNaoLidas } = useMensagensNaoLidas()
   const [empresaSelecionada, definirEmpresaSelecionada] = useState<string | null>(
     empresas[0]?.id ?? null,
   )
@@ -50,7 +55,13 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
   const [texto, definirTexto] = useState('')
   const [conversaAtiva, definirConversaAtiva] = useState<string | null>(null)
   const [carregandoChat, definirCarregandoChat] = useState(false)
-  const [pendente, iniciarTransicao] = useTransition()
+  const [naoLidasLocal, definirNaoLidasLocal] = useState<Record<string, number>>(() => {
+    const mapa: Record<string, number> = {}
+    for (const c of conversas) {
+      if (!mapa[c.empresa_id]) mapa[c.empresa_id] = c.nao_lidas ?? 0
+    }
+    return mapa
+  })
 
   const conversasPorEmpresa = useMemo(() => {
     const mapa = new Map<string, ConversaItem>()
@@ -58,6 +69,14 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
       if (!mapa.has(c.empresa_id)) mapa.set(c.empresa_id, c)
     }
     return mapa
+  }, [conversas])
+
+  useEffect(() => {
+    const mapa: Record<string, number> = {}
+    for (const c of conversas) {
+      if (!mapa[c.empresa_id]) mapa[c.empresa_id] = c.nao_lidas ?? 0
+    }
+    definirNaoLidasLocal(mapa)
   }, [conversas])
 
   const empresasFiltradas = useMemo(() => {
@@ -73,16 +92,33 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (!conversaAtiva) return
+    const id = window.setInterval(() => {
+      void listarMensagens(conversaAtiva).then((lista) => {
+        definirMensagens(lista as MensagemItem[])
+      })
+    }, 12000)
+    return () => window.clearInterval(id)
+  }, [conversaAtiva])
+
   async function abrirEmpresa(empresaId: string) {
     definirEmpresaSelecionada(empresaId)
     definirCarregandoChat(true)
     definirMensagens([])
+
+    const anteriores = naoLidasLocal[empresaId] ?? 0
+    if (anteriores > 0) {
+      definirNaoLidasLocal((m) => ({ ...m, [empresaId]: 0 }))
+      definirTotal(Math.max(0, totalNaoLidas - anteriores))
+    }
 
     const conversa = conversasPorEmpresa.get(empresaId)
     if (conversa) {
       definirConversaAtiva(conversa.id)
       const lista = await listarMensagens(conversa.id)
       definirMensagens(lista as MensagemItem[])
+      await atualizarNaoLidas()
     } else {
       definirConversaAtiva(null)
     }
@@ -92,13 +128,16 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
 
   function aoEnviar() {
     if (!empresaSelecionada || !texto.trim()) return
+    const corpo = texto.trim()
+    definirTexto('')
 
-    iniciarTransicao(async () => {
+    void executar('enviar', async () => {
       let conversaId = conversaAtiva
 
       if (!conversaId) {
         const criada = await garantirConversaEmpresa(empresaSelecionada)
         if (criada.erro || !criada.conversaId) {
+          definirTexto(corpo)
           toast.error(criada.erro ?? 'Não foi possível iniciar a conversa.')
           return
         }
@@ -108,16 +147,19 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
 
       if (!conversaId) return
 
-      const resultado = await enviarMensagem(conversaId, texto)
+      const resultado = await enviarMensagem(conversaId, corpo)
       if (resultado.erro) {
+        definirTexto(corpo)
         toast.error(resultado.erro)
         return
       }
 
-      definirTexto('')
-      const lista = await listarMensagens(conversaId)
-      definirMensagens(lista as MensagemItem[])
-      router.refresh()
+      if (resultado.mensagem) {
+        definirMensagens((lista) => [...lista, resultado.mensagem as MensagemItem])
+      } else {
+        const lista = await listarMensagens(conversaId)
+        definirMensagens(lista as MensagemItem[])
+      }
     })
   }
 
@@ -149,23 +191,32 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
             {empresasFiltradas.map((empresa) => {
               const preview = ultimaMensagem(empresa.id)
               const ativa = empresaSelecionada === empresa.id
+              const naoLidas = naoLidasLocal[empresa.id] ?? 0
 
               return (
                 <li key={empresa.id}>
                   <button
                     type="button"
-                    className={cn('painel-messenger-empresa', ativa && 'painel-messenger-empresa--ativa')}
-                    onClick={() => abrirEmpresa(empresa.id)}
+                    className={cn(
+                      'painel-messenger-empresa',
+                      ativa && 'painel-messenger-empresa--ativa',
+                      naoLidas > 0 && 'painel-messenger-empresa--nao-lida',
+                    )}
+                    onClick={() => void abrirEmpresa(empresa.id)}
                   >
                     <Avatar name={empresa.nome_fantasia} size="sm" />
                     <div className="painel-messenger-empresa-corpo">
                       <div className="painel-messenger-empresa-linha">
                         <span className="painel-messenger-empresa-nome">{empresa.nome_fantasia}</span>
-                        {preview && (
+                        {naoLidas > 0 ? (
+                          <span className="painel-chat-badge" aria-label={`${naoLidas} não lidas`}>
+                            {naoLidas > 99 ? '99+' : naoLidas}
+                          </span>
+                        ) : preview ? (
                           <span className="painel-messenger-empresa-hora">
                             {formatarDataHora(preview.criado_em)}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <p className="painel-messenger-empresa-preview">
                         {preview?.corpo ?? 'Toque para enviar mensagem'}
@@ -219,7 +270,18 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
                         )}
                       >
                         {m.corpo}
-                        <time className="painel-messenger-hora">{formatarDataHora(m.criado_em)}</time>
+                        <span className="painel-chat-meta">
+                          <time className="painel-messenger-hora">{formatarDataHora(m.criado_em)}</time>
+                          {propria && (
+                            <span
+                              className={cn('painel-chat-check', m.lida && 'painel-chat-check--lida')}
+                              title={m.lida ? 'Visualizada' : 'Enviada'}
+                              aria-label={m.lida ? 'Visualizada' : 'Enviada'}
+                            >
+                              {m.lida ? <CheckCheck size={13} strokeWidth={2.4} /> : <Check size={13} strokeWidth={2.4} />}
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   )
@@ -234,7 +296,7 @@ export function PainelChatEmpresas({ empresas, conversas, perfilId }: Props) {
                   onChange={(e) => definirTexto(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && aoEnviar()}
                 />
-                <Button variant="primary" size="sm" onClick={aoEnviar} loading={pendente} disabled={!texto.trim()}>
+                <Button variant="primary" size="sm" onClick={aoEnviar} loading={pendente('enviar')} disabled={!texto.trim() || pendente('enviar')}>
                   <Send size={14} />
                 </Button>
               </footer>

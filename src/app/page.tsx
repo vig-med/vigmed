@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
-import { obterAmbienteDoHost } from '@/lib/ambiente'
 import { headers } from 'next/headers'
+import { obterAmbienteDoHost } from '@/lib/ambiente'
+import { hrefPublico, ROTAS } from '@/lib/rotas'
 
 /**
  * Roteia a raiz para o ambiente correto conforme subdomínio.
@@ -13,12 +14,12 @@ export default async function PaginaRaiz() {
 
   switch (ambiente) {
     case 'adm':
-      redirect('/adm/painel')
+      redirect(hrefPublico(ROTAS.adm.painel))
     case 'docs':
-      redirect('/docs/painel')
+      redirect(hrefPublico(ROTAS.docs.painel))
     case 'blog':
-      redirect('/blog')
+      redirect(hrefPublico(ROTAS.blog.home))
     default:
-      redirect('/site')
+      redirect(ROTAS.site.home)
   }
 }

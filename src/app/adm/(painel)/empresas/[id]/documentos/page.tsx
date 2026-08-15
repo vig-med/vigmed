@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { listarDocumentos, listarCategorias } from '@/lib/documentos/acoes'
 import { obterEmpresa, listarEmpresasResumo } from '@/lib/empresas/acoes'
 import { PainelDocumentos } from '@/components/documentos/PainelDocumentos'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, hrefPublico } from '@/lib/rotas'
 import { ArrowLeft } from 'lucide-react'
 
 export const metadata = { title: 'Documentos da empresa · VIGMED Admin' }
@@ -27,7 +27,7 @@ export default async function PaginaDocumentosEmpresa({ params }: Props) {
     <>
       <div className="px-1 pb-2">
         <Link
-          href={ROTAS.adm.empresa(id)}
+          href={hrefPublico(ROTAS.adm.empresa(id))}
           className="inline-flex items-center gap-1 text-sm text-(--color-text-3) hover:text-(--color-text-1)"
         >
           <ArrowLeft size={14} />

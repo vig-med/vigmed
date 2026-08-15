@@ -1,31 +1,29 @@
 'use client'
 
-import { useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import { Eye, Pin } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Pin } from 'lucide-react'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
 import { IconeAnimado } from '@/components/ui/icone-animado'
-import { Button } from '@/components/ui'
-import { marcarComunicadoLido } from '@/lib/comunicados/acoes'
+import { marcarComunicadosLidos, type ComunicadoComLido } from '@/lib/comunicados/acoes'
 import { cn, formatarDataHora } from '@/lib/utils'
-import type { Comunicado } from '@/types'
 
 interface Props {
-  comunicados: Comunicado[]
+  comunicados: ComunicadoComLido[]
 }
 
 export function PainelComunicadosDocs({ comunicados }: Props) {
-  const router = useRouter()
-  const [, iniciarTransicao] = useTransition()
+  const marcados = useRef(new Set<string>())
 
-  function marcarLido(id: string) {
-    iniciarTransicao(async () => {
-      await marcarComunicadoLido(id)
-      router.refresh()
-    })
-  }
+  useEffect(() => {
+    const naoLidos = comunicados.filter((c) => !c.lido && !marcados.current.has(c.id)).map((c) => c.id)
+    if (naoLidos.length === 0) return
+
+    for (const id of naoLidos) marcados.current.add(id)
+    // Sem router.refresh: evita remount da página inteira
+    void marcarComunicadosLidos(naoLidos)
+  }, [comunicados])
 
   return (
     <SecaoPainel>
@@ -37,7 +35,7 @@ export function PainelComunicadosDocs({ comunicados }: Props) {
       <div className="flex flex-col gap-3">
         {comunicados.map((c, i) => (
           <RevelarScroll key={c.id} atraso={i * 0.04}>
-            <div className={cn('comunicado-card', c.fixado && 'comunicado-card--fixado')}>
+            <div className={cn('comunicado-card', c.fixado && 'comunicado-card--fixado', !c.lido && 'comunicado-card--nao-lido')}>
               {c.fixado && (
                 <div className="comunicado-card-barra">
                   <span className="flex items-center gap-1.5"><Pin size={11} /> Fixado</span>
@@ -49,15 +47,17 @@ export function PainelComunicadosDocs({ comunicados }: Props) {
                   <span className={cn('badge-prioridade', `prioridade-${c.prioridade}`)}>{c.prioridade}</span>
                 </div>
                 <span className="tabela-mono">{formatarDataHora(c.publicado_em)}</span>
-                <p style={{ fontSize: '0.82rem', color: 'var(--color-text-2)', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
-                  {c.corpo}
-                </p>
-                <div style={{ paddingTop: '0.45rem', display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button variant="ghost" size="sm" onClick={() => marcarLido(c.id)}>
-                    <Eye size={13} />
-                    Marcar como lido
-                  </Button>
-                </div>
+                {/<[a-z][\s\S]*>/i.test(c.corpo) ? (
+                  <div
+                    className="blog-prose comunicado-corpo-html"
+                    style={{ fontSize: '0.82rem', color: 'var(--color-text-2)' }}
+                    dangerouslySetInnerHTML={{ __html: c.corpo }}
+                  />
+                ) : (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--color-text-2)', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
+                    {c.corpo}
+                  </p>
+                )}
               </div>
             </div>
           </RevelarScroll>

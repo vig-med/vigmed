@@ -1,9 +1,16 @@
 'use client'
 
-import { cn } from '@/lib/utils'
+import { cn, formatarBytes } from '@/lib/utils'
+
+export interface EmpresaUploadOpcao {
+  id: string
+  nome_fantasia: string
+  armazenamento_limite?: number
+  consumoEmpresa?: number
+}
 
 interface Props {
-  empresas: { id: string; nome_fantasia: string }[]
+  empresas: EmpresaUploadOpcao[]
   selecionadas: string[]
   onChange: (ids: string[]) => void
   fixas?: string[]
@@ -16,7 +23,7 @@ export function SeletorEmpresasUpload({
   selecionadas,
   onChange,
   fixas = [],
-  titulo = 'Empresas destino do upload',
+  titulo = 'Empresas destino',
   className,
 }: Props) {
   const idsFixas = new Set(fixas)
@@ -48,7 +55,7 @@ export function SeletorEmpresasUpload({
           {titulo}
           {selecionadas.length > 0 && (
             <span className="ml-2 text-xs font-normal text-(--color-text-3)">
-              ({selecionadas.length} selecionada{selecionadas.length > 1 ? 's' : ''})
+              ({selecionadas.length})
             </span>
           )}
         </span>
@@ -63,29 +70,53 @@ export function SeletorEmpresasUpload({
         )}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-48 overflow-y-auto">
+      <p className="text-xs text-(--color-text-3) mb-2">
+        Upload admin não consome a cota da empresa. A barra mostra o uso atual dos arquivos enviados pela empresa.
+      </p>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 max-h-56 overflow-y-auto">
         {empresas.map((e) => {
           const fixa = idsFixas.has(e.id)
           const marcada = selecionadas.includes(e.id)
+          const limite = e.armazenamento_limite ?? 0
+          const usado = e.consumoEmpresa ?? 0
+          const pct = limite > 0 ? Math.min((usado / limite) * 100, 100) : 0
+          const quaseCheia = pct >= 90
+
           return (
             <label
               key={e.id}
               className={cn(
-                'flex items-center gap-2 rounded-lg border px-2 py-1.5 text-sm cursor-pointer transition-colors',
+                'flex flex-col gap-1.5 rounded-lg border px-2 py-1.5 text-sm cursor-pointer transition-colors',
                 marcada
                   ? 'border-(--color-accent) bg-(--color-info-bg)'
                   : 'border-(--color-border) text-(--color-text-2)',
                 fixa && 'opacity-80 cursor-default',
               )}
             >
-              <input
-                type="checkbox"
-                checked={marcada}
-                disabled={fixa}
-                onChange={() => alternar(e.id)}
-              />
-              <span className="truncate">{e.nome_fantasia}</span>
-              {fixa && <span className="text-[10px] text-(--color-text-3)">(fixa)</span>}
+              <span className="flex items-center gap-2 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={marcada}
+                  disabled={fixa}
+                  onChange={() => alternar(e.id)}
+                />
+                <span className="truncate font-medium">{e.nome_fantasia}</span>
+                {fixa && <span className="text-[10px] text-(--color-text-3)">(fixa)</span>}
+              </span>
+              {limite > 0 && (
+                <span className="pl-6">
+                  <span className="barra-uso block">
+                    <span
+                      className={cn('barra-uso-fill', quaseCheia && 'barra-uso-fill--alerta')}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </span>
+                  <span className={cn('tabela-mono text-[10px]', quaseCheia && 'text-(--color-danger)')}>
+                    {formatarBytes(usado)} / {formatarBytes(limite)} ({pct.toFixed(0)}%)
+                  </span>
+                </span>
+              )}
             </label>
           )
         })}

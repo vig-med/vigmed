@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { IconeAnimado } from '@/components/ui/icone-animado'
 import { MenuAcoesUsuario } from '@/components/layout/menu/MenuAcoesUsuario'
 import { PipulaDock } from '@/components/layout/menu/PipulaDock'
+import { useMensagensNaoLidas } from '@/contexts/MensagensNaoLidasContext'
 import type { NomeIcone } from '@/lib/icones-animados'
 import type { ItemNavegacao } from '@/lib/navegacao'
-import { listarAreas, areaAtiva } from '@/lib/navegacao-menu'
+import { listarAreas } from '@/lib/navegacao-menu'
 import type { AmbienteApp } from '@/lib/ambiente'
 import type { Perfil } from '@/types'
 import { cn } from '@/lib/utils'
@@ -27,19 +29,27 @@ interface PropsItemDock {
   aoClicar?: () => void
   externo?: boolean
   comRotulo?: boolean
+  badge?: number
 }
 
-function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: PropsItemDock) {
+function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo, badge = 0 }: PropsItemDock) {
   const classe = cn(
     'menu-dock-item grupo-icone',
     ativo && 'menu-dock-item--ativo',
     comRotulo && 'menu-dock-item--com-rotulo',
   )
 
+  const badgeEl = badge > 0 ? (
+    <span className="menu-nav-badge" aria-label={`${badge} não lidas`}>
+      {badge > 99 ? '99+' : badge}
+    </span>
+  ) : null
+
   const conteudo = (
     <>
       <span className="menu-dock-item-icone" aria-hidden>
         <IconeAnimado nome={icone} tamanho={20} />
+        {badgeEl}
       </span>
       {comRotulo && <span className="menu-dock-item-rotulo">{rotulo}</span>}
     </>
@@ -53,7 +63,7 @@ function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: 
           target="_blank"
           rel="noopener noreferrer"
           className={classe}
-          aria-label={rotulo}
+          aria-label={badge > 0 ? `${rotulo}, ${badge} não lidas` : rotulo}
           onClick={aoClicar}
         >
           {conteudo}
@@ -61,18 +71,24 @@ function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: 
       )
     }
     return (
-      <Link href={href} className={classe} aria-label={rotulo} onClick={aoClicar}>
+      <Link
+        href={href}
+        className={classe}
+        aria-label={badge > 0 ? `${rotulo}, ${badge} não lidas` : rotulo}
+        onClick={aoClicar}
+      >
         {conteudo}
       </Link>
     )
   }
 
   return (
-    <PipulaDock texto={rotulo}>
+    <PipulaDock texto={badge > 0 ? `${rotulo} (${badge})` : rotulo}>
       {(pipula) => {
         const iconeSlot = (
           <span className="menu-dock-item-icone" aria-hidden>
             <IconeAnimado nome={icone} tamanho={20} />
+            {badgeEl}
           </span>
         )
 
@@ -83,7 +99,7 @@ function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: 
               target="_blank"
               rel="noopener noreferrer"
               className={classe}
-              aria-label={rotulo}
+              aria-label={badge > 0 ? `${rotulo}, ${badge} não lidas` : rotulo}
               onClick={aoClicar}
               ref={pipula.ref as (node: HTMLAnchorElement | null) => void}
               onMouseEnter={pipula.onMouseEnter}
@@ -100,7 +116,7 @@ function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: 
           <Link
             href={href}
             className={classe}
-            aria-label={rotulo}
+            aria-label={badge > 0 ? `${rotulo}, ${badge} não lidas` : rotulo}
             onClick={aoClicar}
             ref={pipula.ref as (node: HTMLAnchorElement | null) => void}
             onMouseEnter={pipula.onMouseEnter}
@@ -116,89 +132,86 @@ function ItemDock({ href, rotulo, icone, ativo, aoClicar, externo, comRotulo }: 
   )
 }
 
-function ItemCategoria({
-  rotulo,
-  icone,
-  ativo,
-  onClick,
-}: {
-  rotulo: string
-  icone: NomeIcone
-  ativo: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'menu-dock-item menu-dock-item--com-rotulo grupo-icone',
-        ativo && 'menu-dock-item--ativo',
-      )}
-      onClick={onClick}
-      aria-label={rotulo}
-      aria-pressed={ativo}
-    >
-      <span className="menu-dock-item-icone" aria-hidden>
-        <IconeAnimado nome={icone} tamanho={20} />
-      </span>
-      <span className="menu-dock-item-rotulo">{rotulo}</span>
-    </button>
-  )
+function ehHrefMensagens(href: string) {
+  return href.includes('/mensagens') || href === '/mensagens'
 }
 
-/** Dock inferior: desktop plano; mobile com categorias e subitens */
+/** Dock inferior: desktop e mobile em linha; no mobile overflow-x com seta de slider */
 export function MenuDock({ itens, ambiente, perfil }: Props) {
   const caminho = usePathname()
+  const { total: mensagensNaoLidas } = useMensagensNaoLidas()
   const areas = listarAreas(itens)
-  const areaAtivaId = areaAtiva(caminho, areas)
-  const [categoriaSelecionada, definirCategoriaSelecionada] = useState(areaAtivaId)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [podeEsquerda, definirPodeEsquerda] = useState(false)
+  const [podeDireita, definirPodeDireita] = useState(false)
+
+  const itensPlanos = areas.flatMap((area) => {
+    if (area.tipo === 'link' && area.href) {
+      return [{
+        key: area.id,
+        href: area.href,
+        rotulo: area.rotulo,
+        icone: area.icone,
+        externo: area.href.startsWith('http'),
+      }]
+    }
+    if (area.tipo === 'grupo' && area.filhos?.length) {
+      return area.filhos.map((filho) => ({
+        key: `${area.id}-${filho.href}`,
+        href: filho.href,
+        rotulo: filho.rotulo,
+        icone: filho.icone ?? area.icone,
+        externo: false,
+      }))
+    }
+    return []
+  })
+
+  const atualizarSetas = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    definirPodeEsquerda(el.scrollLeft > 4)
+    definirPodeDireita(max > 4 && el.scrollLeft < max - 4)
+  }, [])
 
   useEffect(() => {
-    definirCategoriaSelecionada(areaAtivaId)
-  }, [areaAtivaId])
+    const el = scrollRef.current
+    if (!el) return
+    atualizarSetas()
+    el.addEventListener('scroll', atualizarSetas, { passive: true })
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(atualizarSetas) : null
+    ro?.observe(el)
+    window.addEventListener('resize', atualizarSetas)
+    return () => {
+      el.removeEventListener('scroll', atualizarSetas)
+      ro?.disconnect()
+      window.removeEventListener('resize', atualizarSetas)
+    }
+  }, [atualizarSetas, itensPlanos.length])
 
-  const areaAberta = areas.find((a) => a.id === categoriaSelecionada)
-  const subitens =
-    areaAberta?.tipo === 'grupo' && areaAberta.filhos
-      ? areaAberta.filhos.map((filho) => ({
-          href: filho.href,
-          rotulo: filho.rotulo,
-          icone: filho.icone ?? areaAberta.icone,
-        }))
-      : []
+  function deslizar(direcao: 1 | -1) {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollBy({ left: direcao * Math.min(160, el.clientWidth * 0.65), behavior: 'smooth' })
+  }
 
   return (
     <>
       <nav className="menu-dock-barra hidden md:flex" aria-label="Navegação principal">
         <div className="menu-dock-inner">
           <div className="menu-dock-scroll">
-            {areas.map((area) => {
-              if (area.tipo === 'link' && area.href) {
-                const externo = area.href.startsWith('http')
-                return (
-                  <ItemDock
-                    key={area.id}
-                    href={area.href}
-                    rotulo={area.rotulo}
-                    icone={area.icone}
-                    ativo={caminho.startsWith(area.href)}
-                    externo={externo}
-                  />
-                )
-              }
-              if (area.tipo === 'grupo' && area.filhos?.length) {
-                return area.filhos.map((filho) => (
-                  <ItemDock
-                    key={`${area.id}-${filho.href}`}
-                    href={filho.href}
-                    rotulo={filho.rotulo}
-                    icone={filho.icone ?? area.icone}
-                    ativo={caminho.startsWith(filho.href)}
-                  />
-                ))
-              }
-              return null
-            })}
+            {itensPlanos.map((item) => (
+              <ItemDock
+                key={item.key}
+                href={item.href}
+                rotulo={item.rotulo}
+                icone={item.icone}
+                ativo={caminho.startsWith(item.href)}
+                externo={item.externo}
+                badge={ehHrefMensagens(item.href) ? mensagensNaoLidas : 0}
+              />
+            ))}
           </div>
           <span className="menu-dock-separador" aria-hidden />
           <MenuAcoesUsuario ambiente={ambiente} perfil={perfil} compacto noDock />
@@ -207,54 +220,51 @@ export function MenuDock({ itens, ambiente, perfil }: Props) {
 
       <nav className="menu-dock-barra md:hidden" aria-label="Navegação principal">
         <div className="menu-dock-inner menu-dock-inner--mobile">
-          <div className="menu-dock-mobile-corpo">
-            {subitens.length > 0 && (
-              <div className="menu-dock-sub-linha" role="group" aria-label={`Itens de ${areaAberta?.rotulo}`}>
-                {subitens.map((sub) => (
-                  <ItemDock
-                    key={sub.href}
-                    href={sub.href}
-                    rotulo={sub.rotulo}
-                    icone={sub.icone}
-                    ativo={caminho.startsWith(sub.href)}
-                    comRotulo
-                  />
-                ))}
-              </div>
+          <div className="menu-dock-slider">
+            {podeEsquerda && (
+              <button
+                type="button"
+                className="menu-dock-slider-seta menu-dock-slider-seta--esq"
+                onClick={() => deslizar(-1)}
+                aria-label="Itens anteriores"
+              >
+                <ChevronLeft size={16} />
+              </button>
             )}
 
-            <div className="menu-dock-scroll menu-dock-scroll--mobile">
-              {areas.map((area) => {
-                if (area.tipo === 'link' && area.href) {
-                  const externo = area.href.startsWith('http')
-                  return (
-                    <ItemDock
-                      key={area.id}
-                      href={area.href}
-                      rotulo={area.rotulo}
-                      icone={area.icone}
-                      ativo={caminho.startsWith(area.href)}
-                      externo={externo}
-                      comRotulo
-                    />
-                  )
-                }
-
-                return (
-                  <ItemCategoria
-                    key={area.id}
-                    rotulo={area.rotulo}
-                    icone={area.icone}
-                    ativo={categoriaSelecionada === area.id}
-                    onClick={() => definirCategoriaSelecionada(area.id)}
-                  />
-                )
-              })}
+            <div
+              ref={scrollRef}
+              className="menu-dock-scroll menu-dock-scroll--mobile"
+              role="list"
+            >
+              {itensPlanos.map((item) => (
+                <ItemDock
+                  key={item.key}
+                  href={item.href}
+                  rotulo={item.rotulo}
+                  icone={item.icone}
+                  ativo={caminho.startsWith(item.href)}
+                  externo={item.externo}
+                  comRotulo
+                  badge={ehHrefMensagens(item.href) ? mensagensNaoLidas : 0}
+                />
+              ))}
             </div>
+
+            {podeDireita && (
+              <button
+                type="button"
+                className="menu-dock-slider-seta menu-dock-slider-seta--dir"
+                onClick={() => deslizar(1)}
+                aria-label="Mais itens"
+              >
+                <ChevronRight size={16} />
+              </button>
+            )}
           </div>
 
           <span className="menu-dock-separador" aria-hidden />
-          <MenuAcoesUsuario ambiente={ambiente} perfil={perfil} compacto noDock mobileComRotulo />
+          <MenuAcoesUsuario ambiente={ambiente} perfil={perfil} compacto noDock />
         </div>
       </nav>
     </>

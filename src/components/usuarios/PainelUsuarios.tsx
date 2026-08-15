@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { CheckCircle2, Mail, UserPlus } from 'lucide-react'
-import { Button, Input, Badge } from '@/components/ui'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle2, Copy, Link2, UserPlus } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
-import { convidarUsuario } from '@/lib/usuarios/acoes'
+import { ConfirmacaoExclusaoInline } from '@/components/ui/ConfirmacaoExclusaoInline'
+import { Badge, Button, Input } from '@/components/ui'
+import { useAcaoPendente } from '@/hooks/use-acao-pendente'
+import { convidarUsuario, excluirConvite, excluirUsuarioCompleto } from '@/lib/usuarios/acoes'
 import { ROTULO_PAPEL } from '@/lib/usuarios/constantes'
-import type { PapelUsuario } from '@/types'
 import type { AmbienteConvite } from '@/lib/auth/convites'
-import toast from 'react-hot-toast'
+import type { PapelUsuario } from '@/types'
 
 interface ConviteComEmpresa {
   id: string
@@ -20,6 +23,7 @@ interface ConviteComEmpresa {
   ambiente: AmbienteConvite
   usado_em: string | null
   criado_em: string
+  empresa_id?: string | null
   empresas?: { nome_fantasia: string } | { nome_fantasia: string }[] | null
 }
 
@@ -48,156 +52,248 @@ interface Props {
   convites: ConviteComEmpresa[]
   perfis: PerfilResumo[]
   empresas: EmpresaResumo[]
+  /** Modo empresa: só docs + papel usuario_empresa */
+  modo?: 'adm' | 'empresa'
+  titulo?: string
+  descricao?: string
 }
 
-export function PainelUsuarios({ convites, perfis, empresas }: Props) {
+type AlvoExclusao = { tipo: 'convite' | 'usuario'; id: string } | null
+
+function linkAtivacao(email: string) {
+  if (typeof window === 'undefined') return `/cadastro?email=${encodeURIComponent(email)}`
+  return `${window.location.origin}/cadastro?email=${encodeURIComponent(email)}`
+}
+
+/** Painel unificado de pessoas: autorizar, pendentes, contas e exclusão */
+export function PainelUsuarios({
+  convites,
+  perfis,
+  empresas,
+  modo = 'adm',
+  titulo = 'Pessoas',
+  descricao = 'Autorize e-mails, acompanhe convites e contas em um só lugar.',
+}: Props) {
+  const router = useRouter()
+  const { pendente, executar } = useAcaoPendente<'convidar' | 'excluir'>()
   const [email, definirEmail] = useState('')
   const [nome, definirNome] = useState('')
-  const [papel, definirPapel] = useState<PapelUsuario>('usuario_empresa')
-  const [ambiente, definirAmbiente] = useState<AmbienteConvite>('docs')
+  const [papel, definirPapel] = useState<PapelUsuario>(
+    modo === 'empresa' ? 'usuario_empresa' : 'usuario_empresa',
+  )
+  const [ambiente, definirAmbiente] = useState<AmbienteConvite>(modo === 'empresa' ? 'docs' : 'docs')
   const [empresaId, definirEmpresaId] = useState('')
-  const [pendente, iniciarTransicao] = useTransition()
+  const [excluindo, definirExcluindo] = useState<AlvoExclusao>(null)
+  const [ultimoLink, definirUltimoLink] = useState<string | null>(null)
+
+  const convitesPendentes = useMemo(
+    () => convites.filter((c) => !c.usado_em),
+    [convites],
+  )
 
   function aoConvidar(e: React.FormEvent) {
     e.preventDefault()
-    iniciarTransicao(async () => {
+    void executar('convidar', async () => {
       const resultado = await convidarUsuario({
-        email, nomeCompleto: nome, papel, ambiente,
-        empresaId: ambiente === 'docs' ? empresaId || null : null,
+        email,
+        nomeCompleto: nome,
+        papel: modo === 'empresa' ? 'usuario_empresa' : papel,
+        ambiente: modo === 'empresa' ? 'docs' : ambiente,
+        empresaId: modo === 'empresa' ? undefined : ambiente === 'docs' ? empresaId || null : null,
       })
-      if (resultado.erro) { toast.error(resultado.erro); return }
-      toast.success(resultado.mensagem ?? 'Convite criado!')
+      if (resultado.erro) {
+        toast.error(resultado.erro)
+        return
+      }
+      const link = resultado.linkAtivacao
+        ? `${typeof window !== 'undefined' ? window.location.origin : ''}${resultado.linkAtivacao}`
+        : linkAtivacao(email)
+      definirUltimoLink(link)
+      try {
+        await navigator.clipboard.writeText(link)
+        toast.success('E-mail autorizado. Link de ativação copiado.')
+      } catch {
+        toast.success(resultado.mensagem ?? 'E-mail autorizado.')
+      }
       definirEmail('')
       definirNome('')
+      router.refresh()
+    })
+  }
+
+  function copiarLink(emailAlvo: string) {
+    const link = linkAtivacao(emailAlvo)
+    navigator.clipboard.writeText(link).then(
+      () => toast.success('Link copiado.'),
+      () => toast.error('Não foi possível copiar.'),
+    )
+  }
+
+  function confirmarExclusao() {
+    if (!excluindo) return
+    const alvo = excluindo
+    definirExcluindo(null)
+    void executar('excluir', async () => {
+      if (alvo.tipo === 'convite') {
+        const r = await excluirConvite(alvo.id)
+        if (r.erro) { toast.error(r.erro); return }
+        toast.success('Convite excluído.')
+      } else {
+        const r = await excluirUsuarioCompleto(alvo.id)
+        if (r.erro) { toast.error(r.erro); return }
+        toast.success(r.mensagem ?? 'Usuário excluído.')
+      }
+      router.refresh()
     })
   }
 
   return (
     <SecaoPainel>
-      <CabecalhoPagina
-        titulo="Usuários"
-        descricao="Convide usuários e gerencie acessos à plataforma."
-      />
+      <CabecalhoPagina titulo={titulo} descricao={descricao} />
 
       <RevelarScroll>
         <div className="painel-form-lateral">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            <UserPlus size={16} style={{ color: 'var(--color-text-2)' }} />
-            <span className="painel-form-titulo">Novo convite</span>
+          <div className="flex items-center gap-2">
+            <UserPlus size={16} className="text-(--color-text-2)" />
+            <span className="painel-form-titulo">Autorizar e-mail</span>
           </div>
-
-          <p style={{ fontSize: '0.77rem', color: 'var(--color-text-3)', marginTop: '-0.4rem' }}>
-            O convidado receberá um e-mail com o link para ativar o acesso.
+          <p className="text-xs text-(--color-text-3) -mt-1">
+            Sem e-mail automático. Copie o link de ativação e envie como quiser.
           </p>
 
           <form onSubmit={aoConvidar} className="grid gap-3 sm:grid-cols-2">
             <Input label="E-mail" type="email" value={email} onChange={(e) => definirEmail(e.target.value)} placeholder="usuario@empresa.com" required />
             <Input label="Nome (opcional)" value={nome} onChange={(e) => definirNome(e.target.value)} placeholder="Nome completo" />
 
-            <div className="painel-campo">
-              <label className="painel-label">Ambiente</label>
-              <select
-                className="painel-select"
-                style={{ width: '100%' }}
-                value={ambiente}
-                onChange={(e) => {
-                  const novo = e.target.value as AmbienteConvite
-                  definirAmbiente(novo)
-                  if (novo === 'adm') definirPapel('administrador')
-                  else definirPapel('usuario_empresa')
-                }}
-              >
-                <option value="docs">Portal docs (empresas)</option>
-                <option value="adm">Painel administrativo</option>
-              </select>
-            </div>
-
-            <div className="painel-campo">
-              <label className="painel-label">Papel</label>
-              <select className="painel-select" style={{ width: '100%' }} value={papel} onChange={(e) => definirPapel(e.target.value as PapelUsuario)}>
-                {ambiente === 'adm' ? (
-                  <option value="administrador">Administrador do sistema</option>
-                ) : (
-                  <>
-                    <option value="usuario_empresa">Usuário empresa</option>
-                    <option value="administrador_empresa">Administrador empresa</option>
-                  </>
+            {modo === 'adm' && (
+              <>
+                <div className="painel-campo">
+                  <label className="painel-label">Acesso</label>
+                  <select
+                    className="painel-select w-full"
+                    value={`${ambiente}:${papel}`}
+                    onChange={(e) => {
+                      const [amb, pap] = e.target.value.split(':') as [AmbienteConvite, PapelUsuario]
+                      definirAmbiente(amb)
+                      definirPapel(pap)
+                    }}
+                  >
+                    <option value="docs:usuario_empresa">Docs · usuário</option>
+                    <option value="docs:administrador_empresa">Docs · admin empresa</option>
+                    <option value="adm:administrador">Admin do sistema</option>
+                  </select>
+                </div>
+                {ambiente === 'docs' && (
+                  <div className="painel-campo">
+                    <label className="painel-label">Empresa</label>
+                    <select className="painel-select w-full" value={empresaId} onChange={(e) => definirEmpresaId(e.target.value)} required>
+                      <option value="">Selecione</option>
+                      {empresas.map((e) => (
+                        <option key={e.id} value={e.id}>{e.nome_fantasia}</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
-              </select>
-            </div>
-
-            {ambiente === 'docs' && (
-              <div className="painel-campo sm:col-span-2">
-                <label className="painel-label">Empresa</label>
-                <select className="painel-select" style={{ width: '100%' }} value={empresaId} onChange={(e) => definirEmpresaId(e.target.value)} required>
-                  <option value="">Selecione a empresa</option>
-                  {empresas.map((e) => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
-                </select>
-              </div>
+              </>
             )}
 
             <div className="sm:col-span-2">
-              <Button type="submit" variant="primary" size="sm" loading={pendente}>
-                <Mail size={14} />
-                Autorizar e-mail
+              <Button type="submit" variant="primary" size="sm" loading={pendente('convidar')}>
+                <UserPlus size={14} />
+                Autorizar e copiar link
               </Button>
             </div>
           </form>
-        </div>
-      </RevelarScroll>
 
-      <RevelarScroll atraso={0.06}>
-        <div className="painel-tabela-wrap">
-          <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid var(--color-border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-2)' }}>
-            Convites recentes
-          </div>
-          {convites.length === 0 ? (
-            <div className="painel-vazio">Nenhum convite ainda.</div>
-          ) : (
-            <div>
-              {convites.map((c) => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.6rem 0.85rem', borderBottom: '1px solid var(--color-border)' }}
-                  className="last:border-0">
-                  <div>
-                    <p className="tabela-nome" style={{ maxWidth: 'none' }}>{c.email}</p>
-                    <p className="tabela-sub">{ROTULO_PAPEL[c.papel]} · {c.ambiente}{nomeEmpresa(c.empresas) ? ` · ${nomeEmpresa(c.empresas)}` : ''}</p>
-                  </div>
-                  {c.usado_em ? (
-                    <Badge variant="success" className="text-[10px] shrink-0">
-                      <CheckCircle2 size={10} className="mr-1" /> Ativado
-                    </Badge>
-                  ) : (
-                    <Badge variant="warning" className="text-[10px] shrink-0">Pendente</Badge>
-                  )}
-                </div>
-              ))}
+          {ultimoLink && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface-2) px-3 py-2 text-xs">
+              <Link2 size={14} className="shrink-0" />
+              <span className="truncate flex-1 font-mono">{ultimoLink}</span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(ultimoLink).then(() => toast.success('Copiado.'))}>
+                <Copy size={14} />
+              </Button>
             </div>
           )}
         </div>
       </RevelarScroll>
 
-      <RevelarScroll atraso={0.09}>
+      <RevelarScroll atraso={0.05}>
         <div className="painel-tabela-wrap">
-          <div style={{ padding: '0.65rem 0.85rem', borderBottom: '1px solid var(--color-border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-text-2)' }}>
-            Usuários cadastrados
+          <div className="px-3 py-2 border-b border-(--color-border) text-xs font-semibold text-(--color-text-2)">
+            Aguardando ativação ({convitesPendentes.length})
+          </div>
+          {convitesPendentes.length === 0 ? (
+            <div className="painel-vazio text-sm">Nenhum convite pendente.</div>
+          ) : (
+            convitesPendentes.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-(--color-border) last:border-0">
+                <div className="min-w-0">
+                  <p className="tabela-nome">{c.email}</p>
+                  <p className="tabela-sub">
+                    {ROTULO_PAPEL[c.papel]}
+                    {nomeEmpresa(c.empresas) ? ` · ${nomeEmpresa(c.empresas)}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge variant="warning" className="text-[10px]">Pendente</Badge>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => copiarLink(c.email)} aria-label="Copiar link">
+                    <Copy size={14} />
+                  </Button>
+                  <ConfirmacaoExclusaoInline
+                    ariaLabel={`Excluir convite ${c.email}`}
+                    confirmando={excluindo?.tipo === 'convite' && excluindo.id === c.id}
+                    desabilitado={pendente('excluir')}
+                    onPedir={() => definirExcluindo({ tipo: 'convite', id: c.id })}
+                    onConfirmar={confirmarExclusao}
+                    onCancelar={() => definirExcluindo(null)}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </RevelarScroll>
+
+      <RevelarScroll atraso={0.08}>
+        <div className="painel-tabela-wrap">
+          <div className="px-3 py-2 border-b border-(--color-border) text-xs font-semibold text-(--color-text-2)">
+            Contas ({perfis.length})
           </div>
           {perfis.length === 0 ? (
-            <div className="painel-vazio">Nenhum usuário ainda.</div>
+            <div className="painel-vazio text-sm">Nenhuma conta ainda.</div>
           ) : (
-            <div>
-              {perfis.map((p) => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.6rem 0.85rem', borderBottom: '1px solid var(--color-border)' }}
-                  className="last:border-0">
-                  <div>
-                    <p className="tabela-nome" style={{ maxWidth: 'none' }}>{p.nome_completo || p.email}</p>
-                    <p className="tabela-sub">{p.email} · {ROTULO_PAPEL[p.papel]}</p>
-                  </div>
-                  <Badge variant={p.ativo ? 'success' : 'danger'} className="text-[10px] shrink-0">
-                    {p.ativo ? 'Ativo' : 'Inativo'}
-                  </Badge>
+            perfis.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-(--color-border) last:border-0">
+                <div className="min-w-0">
+                  <p className="tabela-nome">{p.nome_completo || p.email}</p>
+                  <p className="tabela-sub">
+                    {p.email} · {ROTULO_PAPEL[p.papel]}
+                    {nomeEmpresa(p.empresas) ? ` · ${nomeEmpresa(p.empresas)}` : ''}
+                  </p>
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge variant={p.ativo ? 'success' : 'danger'} className="text-[10px]">
+                    {p.ativo ? (
+                      <span className="inline-flex items-center gap-1">
+                        <CheckCircle2 size={10} /> Ativo
+                      </span>
+                    ) : (
+                      'Inativo'
+                    )}
+                  </Badge>
+                  {modo === 'adm' && (
+                    <ConfirmacaoExclusaoInline
+                      ariaLabel={`Excluir usuário ${p.email}`}
+                      confirmando={excluindo?.tipo === 'usuario' && excluindo.id === p.id}
+                      desabilitado={pendente('excluir')}
+                      onPedir={() => definirExcluindo({ tipo: 'usuario', id: p.id })}
+                      onConfirmar={confirmarExclusao}
+                      onCancelar={() => definirExcluindo(null)}
+                    />
+                  )}
+                </div>
+              </div>
+            ))
           )}
         </div>
       </RevelarScroll>

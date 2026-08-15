@@ -1,8 +1,11 @@
 import { headers } from 'next/headers'
-import { obterUrlBaseDoAmbiente } from '@/lib/ambiente'
+import {
+  obterUrlBaseDoAmbiente,
+  roteamentoPorSubdominio,
+} from '@/lib/ambiente'
 import type { AmbienteApp } from '@/lib/ambiente'
 import { ehAdministrador } from '@/lib/auth/sessao'
-import { ROTAS } from '@/lib/rotas'
+import { hrefPublico, ROTAS, urlDoAmbiente } from '@/lib/rotas'
 import type { PapelUsuario } from '@/types'
 
 /** URL base para telas de autenticação unificadas (fallback por env). */
@@ -33,19 +36,33 @@ export function ambienteDoPapel(papel: PapelUsuario): AmbienteApp {
   return ehAdministrador(papel) ? 'adm' : 'docs'
 }
 
-/** Caminho interno do painel (mesmo host) */
+/** Caminho interno do App Router */
 export function caminhoPainelPorPapel(papel: PapelUsuario): string {
   return ehAdministrador(papel) ? ROTAS.adm.painel : ROTAS.docs.painel
 }
 
-/** URL absoluta do painel; respeita subdomínio em produção */
-export function urlPainelPorPapel(papel: PapelUsuario): string {
-  const ambiente = ambienteDoPapel(papel)
-  const base = obterUrlBaseDoAmbiente(ambiente)
-  return `${base}${caminhoPainelPorPapel(papel)}`
+/** Path público do painel (/painel em prod, /adm/painel em dev) */
+export function caminhoPublicoPainelPorPapel(papel: PapelUsuario): string {
+  return hrefPublico(caminhoPainelPorPapel(papel))
 }
 
-/** Painel no mesmo host do login (mantém cookies Supabase após OAuth). */
-export function urlPainelNaOrigem(papel: PapelUsuario, origem: string): string {
+/** URL absoluta do painel no subdomínio correto */
+export function urlPainelPorPapel(papel: PapelUsuario): string {
+  const ambiente = ambienteDoPapel(papel)
+  return urlDoAmbiente(ambiente, caminhoPainelPorPapel(papel))
+}
+
+/**
+ * Após login: em prod vai ao subdomínio; em dev fica na mesma origem com /adm|/docs.
+ */
+export function urlPainelAposLogin(papel: PapelUsuario, origem: string): string {
+  if (roteamentoPorSubdominio()) {
+    return urlPainelPorPapel(papel)
+  }
   return `${origem.replace(/\/+$/, '')}${caminhoPainelPorPapel(papel)}`
+}
+
+/** @deprecated use urlPainelAposLogin */
+export function urlPainelNaOrigem(papel: PapelUsuario, origem: string): string {
+  return urlPainelAposLogin(papel, origem)
 }
