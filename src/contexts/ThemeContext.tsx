@@ -17,7 +17,6 @@ import { PREFERENCIAS_PADRAO } from '@/lib/tema/tipos'
 export type Tema = 'light' | 'dark'
 
 interface ValorContextoTema {
-  /** Tema resolvido (claro ou escuro) */
   tema: Tema
   modo: ModoTema
   temaVisual: IdTemaVisual
@@ -68,63 +67,51 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       definirPrefs((atual) => {
         if (atual.modo !== 'system') return atual
         aplicarPreferencias(atual)
-        return atual
+        return { ...atual }
       })
     }
     media.addEventListener('change', aoMudarSistema)
     return () => media.removeEventListener('change', aoMudarSistema)
   }, [pathname])
 
-  const persistirRemoto = useCallback(async (proximas: PreferenciasAparencia) => {
+  const persistirRemoto = useCallback((proximas: PreferenciasAparencia) => {
     if (ehRotaPublica(pathname)) return
-    try {
-      await salvarPreferenciasAparencia(proximas.modo, proximas.temaVisual)
-    } catch {
-      /* fora do painel autenticado */
-    }
+    // Fora do setState/render: evita "Cannot update Router while rendering ThemeProvider"
+    queueMicrotask(() => {
+      void salvarPreferenciasAparencia(proximas.modo, proximas.temaVisual).catch(() => {})
+    })
   }, [pathname])
+
+  const aplicarEPersistir = useCallback((proximas: PreferenciasAparencia) => {
+    definirPrefs(proximas)
+    salvarPreferenciasLocais(proximas)
+    aplicarPreferencias(proximas)
+    persistirRemoto(proximas)
+  }, [persistirRemoto])
 
   const alternarTema = useCallback(() => {
     if (ehRotaPublica(pathname)) return
-    definirPrefs((anterior) => {
-      const escuro = resolverModoEscuro(anterior.modo)
-      const proximas: PreferenciasAparencia = {
-        ...anterior,
-        modo: escuro ? 'light' : 'dark',
-      }
-      salvarPreferenciasLocais(proximas)
-      aplicarPreferencias(proximas)
-      void persistirRemoto(proximas)
-      return proximas
+    const escuro = resolverModoEscuro(prefs.modo)
+    aplicarEPersistir({
+      ...prefs,
+      modo: escuro ? 'light' : 'dark',
     })
-  }, [pathname, persistirRemoto])
+  }, [pathname, prefs, aplicarEPersistir])
 
   const definirModo = useCallback(
     (modo: ModoTema) => {
       if (ehRotaPublica(pathname)) return
-      definirPrefs((anterior) => {
-        const proximas = { ...anterior, modo }
-        salvarPreferenciasLocais(proximas)
-        aplicarPreferencias(proximas)
-        void persistirRemoto(proximas)
-        return proximas
-      })
+      aplicarEPersistir({ ...prefs, modo })
     },
-    [pathname, persistirRemoto],
+    [pathname, prefs, aplicarEPersistir],
   )
 
   const definirTemaVisual = useCallback(
     (temaVisual: IdTemaVisual) => {
       if (ehRotaPublica(pathname)) return
-      definirPrefs((anterior) => {
-        const proximas = { ...anterior, temaVisual }
-        salvarPreferenciasLocais(proximas)
-        aplicarPreferencias(proximas)
-        void persistirRemoto(proximas)
-        return proximas
-      })
+      aplicarEPersistir({ ...prefs, temaVisual })
     },
-    [pathname, persistirRemoto],
+    [pathname, prefs, aplicarEPersistir],
   )
 
   const sincronizarDoPerfil = useCallback(

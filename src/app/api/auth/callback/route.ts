@@ -4,15 +4,27 @@ import { registrarAuditoria } from '@/lib/auth/sessao'
 import { validarPerfilAposAutenticacao } from '@/lib/auth/perfil-servidor'
 import {
   ambienteDoPapel,
-  urlPainelNaOrigem,
+  urlPainelAposLogin,
 } from '@/lib/auth/redirecionamento'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, urlDoAmbiente } from '@/lib/rotas'
+import { comCookieCompartilhado } from '@/lib/supabase/cookies-auth'
 
 /** Copia cookies de sessão (PKCE) para o redirect final */
 function redirecionarComCookies(respostaOrigem: NextResponse, url: string) {
   const destino = NextResponse.redirect(url)
   respostaOrigem.cookies.getAll().forEach((cookie) => {
-    destino.cookies.set(cookie)
+    destino.cookies.set(
+      cookie.name,
+      cookie.value,
+      comCookieCompartilhado({
+        path: cookie.path || '/',
+        httpOnly: cookie.httpOnly,
+        secure: cookie.secure,
+        sameSite: (cookie.sameSite as CookieOptions['sameSite']) ?? 'lax',
+        maxAge: cookie.maxAge,
+        expires: cookie.expires ? new Date(cookie.expires) : undefined,
+      }),
+    )
   })
   return destino
 }
@@ -32,7 +44,7 @@ function criarSupabaseCallback(requisicao: NextRequest) {
           cookiesParaDefinir.forEach(({ name, value }) => requisicao.cookies.set(name, value))
           respostaComCookies = NextResponse.next({ request: requisicao })
           cookiesParaDefinir.forEach(({ name, value, options }) =>
-            respostaComCookies.cookies.set(name, value, options),
+            respostaComCookies.cookies.set(name, value, comCookieCompartilhado(options)),
           )
         },
       },
@@ -55,15 +67,20 @@ export async function GET(requisicao: NextRequest) {
   const oauthErro = searchParams.get('error')
   const oauthDescricao = searchParams.get('error_description')
 
+  const urlErro = (codigoErro: string, msg?: string) => {
+    const params = new URLSearchParams({ erro: codigoErro })
+    if (msg) params.set('msg', msg)
+    return `${urlAuth}${ROTAS.auth.entrar}?${params.toString()}`
+  }
+
   try {
     if (oauthErro) {
       console.error('[auth/callback] OAuth:', oauthErro, oauthDescricao)
-      const msg = encodeURIComponent(oauthDescricao ?? oauthErro)
-      return NextResponse.redirect(`${urlAuth}${ROTAS.auth.entrar}?erro=oauth&msg=${msg}`)
+      return NextResponse.redirect(urlErro('oauth', oauthDescricao ?? oauthErro))
     }
 
     if (!codigo) {
-      return NextResponse.redirect(`${urlAuth}${ROTAS.auth.entrar}?erro=auth`)
+      return NextResponse.redirect(urlErro('auth'))
     }
 
     const { supabase, obterRespostaComCookies } = criarSupabaseCallback(requisicao)
@@ -71,7 +88,7 @@ export async function GET(requisicao: NextRequest) {
 
     if (error || !data.user) {
       console.error('[auth/callback] Sessão inválida:', error?.message)
-      return NextResponse.redirect(`${urlAuth}${ROTAS.auth.entrar}?erro=auth`)
+      return NextResponse.redirect(urlErro('auth'))
     }
 
     const validacao = await validarPerfilAposAutenticacao(
@@ -81,10 +98,7 @@ export async function GET(requisicao: NextRequest) {
 
     if ('erro' in validacao) {
       await supabase.auth.signOut()
-      return redirecionarComCookies(
-        obterRespostaComCookies(),
-        `${urlAuth}${ROTAS.auth.entrar}?erro=sem_acesso`,
-      )
+      return redirecionarComCookies(obterRespostaComCookies(), urlErro('sem_acesso'))
     }
 
     const { perfil } = validacao
@@ -104,12 +118,12 @@ export async function GET(requisicao: NextRequest) {
 
     const destino =
       tipo === 'redefinir'
-        ? `${urlAuth}/${ambiente}/perfil?redefinir=1`
-        : urlPainelNaOrigem(perfil.papel, urlAuth)
+        ? urlDoAmbiente(ambiente, ambiente === 'adm' ? ROTAS.adm.perfil : ROTAS.docs.perfil) + '?redefinir=1'
+        : urlPainelAposLogin(perfil.papel, urlAuth)
 
     return redirecionarComCookies(obterRespostaComCookies(), destino)
   } catch (erro) {
     console.error('[auth/callback] Erro não tratado:', erro)
-    return NextResponse.redirect(`${urlAuth}${ROTAS.auth.entrar}?erro=auth`)
+    return NextResponse.redirect(urlErro('auth'))
   }
 }

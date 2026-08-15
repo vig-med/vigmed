@@ -22,9 +22,7 @@ export async function salvarPreferenciasAparencia(modo: ModoTema, temaVisual: Id
 
   if (error) return { erro: 'Não foi possível salvar preferências.' }
 
-  revalidatePath(ROTAS.adm.perfil)
-  revalidatePath(ROTAS.docs.perfil)
-
+  // Sem revalidatePath aqui: evita atualizar o Router durante troca de tema no client
   return { sucesso: true }
 }
 

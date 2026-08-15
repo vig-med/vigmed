@@ -5,5 +5,5 @@ export const metadata = { title: 'Configurações · VIGMED Admin' }
 
 export default async function PaginaConfiguracoes() {
   const configuracoes = await listarConfiguracoes()
-  return <PainelConfiguracoes configuracoes={configuracoes as { chave: string; valor: Record<string, unknown> }[]} />
+  return <PainelConfiguracoes configuracoes={configuracoes} />
 }

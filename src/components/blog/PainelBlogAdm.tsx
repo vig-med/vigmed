@@ -10,7 +10,7 @@ import { PillsFiltro } from '@/components/layout/PillsFiltro'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { Badge, Button, Card, CardContent } from '@/components/ui'
 import { alterarStatusPostBlog, excluirPostBlog } from '@/lib/blog/acoes'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, hrefPublico, urlDoAmbiente } from '@/lib/rotas'
 import { cn, formatarDataHora } from '@/lib/utils'
 import type { PostBlog } from '@/types'
 import type { EstatisticasPostBlog, StatusPostBlog } from '@/lib/blog/tipos'
@@ -189,7 +189,7 @@ export function PainelBlogAdm({ postsIniciais, estatisticas }: Props) {
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {post.status === 'publicado' && (
                     <a
-                      href={ROTAS.blog.post(post.slug)}
+                      href={urlDoAmbiente('blog', ROTAS.blog.post(post.slug))}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-button-bg)] px-2.5 text-[0.8rem] font-medium hover:bg-[var(--glass-nav-hover)]"
@@ -199,7 +199,7 @@ export function PainelBlogAdm({ postsIniciais, estatisticas }: Props) {
                     </a>
                   )}
                   <Link
-                    href={ROTAS.adm.blogEditar(post.id)}
+                    href={hrefPublico(ROTAS.adm.blogEditar(post.id))}
                     className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-button-bg)] px-2.5 text-[0.8rem] font-medium hover:bg-[var(--glass-nav-hover)]"
                   >
                     <Pencil size={14} />

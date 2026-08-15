@@ -1,18 +1,19 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
-import { ArrowLeft, FolderOpen, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, Check, FolderOpen, Trash2, UserPlus, X } from 'lucide-react'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
 import { Badge, Button, Input } from '@/components/ui'
+import { useAcaoPendente } from '@/hooks/use-acao-pendente'
 import { excluirEmpresa, salvarEmpresa } from '@/lib/empresas/acoes'
 import { convidarUsuario } from '@/lib/usuarios/acoes'
 import { ROTULO_PAPEL } from '@/lib/usuarios/constantes'
-import { ROTAS } from '@/lib/rotas'
+import { ROTAS, hrefPublico } from '@/lib/rotas'
 import { formatarBytes, formatarCnpj } from '@/lib/utils'
 import type { ConsumoArmazenamentoEmpresa } from '@/lib/documentos/armazenamento'
 import type { Empresa, PapelUsuario, StatusEmpresa } from '@/types'
@@ -44,7 +45,7 @@ interface Props {
 
 export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Props) {
   const router = useRouter()
-  const [pendente, iniciarTransicao] = useTransition()
+  const { pendente, executar } = useAcaoPendente<'salvar' | 'convidar' | 'excluir'>()
   const [form, definirForm] = useState({
     razaoSocial: empresa.razao_social,
     nomeFantasia: empresa.nome_fantasia,
@@ -56,9 +57,10 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
   })
   const [emailConvite, definirEmailConvite] = useState('')
   const [nomeConvite, definirNomeConvite] = useState('')
+  const [excluindo, definirExcluindo] = useState<{ tipo: 'empresa'; id: string } | null>(null)
 
   function salvar() {
-    iniciarTransicao(async () => {
+    void executar('salvar', async () => {
       const r = await salvarEmpresa({ id: empresa.id, ...form })
       if (r.erro) {
         toast.error(r.erro)
@@ -71,7 +73,7 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
 
   function convidar(e: React.FormEvent) {
     e.preventDefault()
-    iniciarTransicao(async () => {
+    void executar('convidar', async () => {
       const r = await convidarUsuario({
         email: emailConvite,
         nomeCompleto: nomeConvite,
@@ -83,23 +85,28 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
         toast.error(r.erro)
         return
       }
-      toast.success(r.mensagem ?? 'Convite enviado.')
+      const path = r.linkAtivacao ?? `/cadastro?email=${encodeURIComponent(emailConvite)}`
+      const link = `${window.location.origin}${path}`
+      try {
+        await navigator.clipboard.writeText(link)
+        toast.success('E-mail autorizado. Link copiado.')
+      } catch {
+        toast.success(r.mensagem ?? 'E-mail autorizado.')
+      }
       definirEmailConvite('')
       definirNomeConvite('')
       router.refresh()
     })
   }
 
-  function excluir() {
-    if (!confirm(`Excluir a empresa "${empresa.nome_fantasia}"? Esta ação não pode ser desfeita.`)) return
-    iniciarTransicao(async () => {
+  function confirmarExclusao() {
+    if (!excluindo || excluindo.tipo !== 'empresa') return
+    definirExcluindo(null)
+    void executar('excluir', async () => {
       const r = await excluirEmpresa(empresa.id)
-      if (r.erro) {
-        toast.error(r.erro)
-        return
-      }
+      if (r.erro) { toast.error(r.erro); return }
       toast.success('Empresa excluída.')
-      router.push(ROTAS.adm.empresas)
+      router.push(hrefPublico(ROTAS.adm.empresas))
     })
   }
 
@@ -107,7 +114,7 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
     <SecaoPainel>
       <div className="mb-4">
         <Link
-          href={ROTAS.adm.empresas}
+          href={hrefPublico(ROTAS.adm.empresas)}
           className="inline-flex items-center gap-1 text-sm text-(--color-text-3) hover:text-(--color-text-1)"
         >
           <ArrowLeft size={14} />
@@ -120,14 +127,25 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
         descricao={`${formatarCnpj(empresa.cnpj)} · ${formatarBytes(consumo.total)} em arquivos`}
         acoes={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" render={<Link href={ROTAS.adm.empresaDocumentos(empresa.id)} />}>
+            <Button variant="outline" size="sm" render={<Link href={hrefPublico(ROTAS.adm.empresaDocumentos(empresa.id))} />}>
               <FolderOpen size={14} />
               Documentos
             </Button>
-            <Button variant="ghost" size="sm" className="text-(--color-danger)" onClick={excluir} loading={pendente}>
-              <Trash2 size={14} />
-              Excluir
-            </Button>
+            {excluindo?.tipo === 'empresa' ? (
+              <div className="inline-flex items-center gap-0.5">
+                <Button type="button" variant="ghost" size="sm" className="text-emerald-600" disabled={pendente('excluir')} onClick={confirmarExclusao} aria-label="Confirmar exclusão da empresa">
+                  <Check size={15} />
+                </Button>
+                <Button type="button" variant="ghost" size="sm" disabled={pendente('excluir')} onClick={() => definirExcluindo(null)} aria-label="Cancelar">
+                  <X size={15} />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="ghost" size="sm" className="text-(--color-danger)" disabled={pendente('excluir')} onClick={() => definirExcluindo({ tipo: 'empresa', id: empresa.id })}>
+                <Trash2 size={14} />
+                Excluir
+              </Button>
+            )}
           </div>
         }
       />
@@ -172,7 +190,7 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
               </select>
             </div>
           </div>
-          <Button variant="primary" size="sm" className="mt-3" loading={pendente} onClick={salvar}>
+          <Button variant="primary" size="sm" className="mt-3" loading={pendente('salvar')} onClick={salvar}>
             Salvar alterações
           </Button>
         </div>
@@ -180,67 +198,43 @@ export function PainelEmpresaDetalhe({ empresa, consumo, perfis, convites }: Pro
 
       <RevelarScroll atraso={0.08}>
         <div className="rounded-xl border border-(--color-border) bg-(--color-surface) p-4">
-          <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <UserPlus size={15} />
-            Usuários da empresa
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <UserPlus size={15} />
+              Pessoas ({perfis.length} contas · {convites.filter((c) => !c.usado_em).length} pendentes)
+            </h2>
+            <Button variant="outline" size="sm" render={<Link href={hrefPublico(ROTAS.adm.usuarios)} />}>
+              Abrir Pessoas
+            </Button>
+          </div>
 
-          <form onSubmit={convidar} className="grid gap-2 sm:grid-cols-3 mb-4">
+          <form onSubmit={convidar} className="grid gap-2 sm:grid-cols-3 mb-3">
             <Input label="E-mail" type="email" value={emailConvite} onChange={(e) => definirEmailConvite(e.target.value)} required />
             <Input label="Nome" value={nomeConvite} onChange={(e) => definirNomeConvite(e.target.value)} />
             <div className="flex items-end">
-              <Button type="submit" variant="outline" size="sm" loading={pendente} className="w-full sm:w-auto">
-                Convidar
+              <Button type="submit" variant="outline" size="sm" loading={pendente('convidar')} className="w-full sm:w-auto">
+                Autorizar e copiar link
               </Button>
             </div>
           </form>
 
-          <div className="painel-tabela-wrap">
-            <table className="painel-tabela">
-              <thead className="painel-tabela-thead">
-                <tr>
-                  <th>Usuário</th>
-                  <th>Papel</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody className="painel-tabela-tbody">
-                {perfis.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <span className="tabela-nome">{p.nome_completo || p.email}</span>
-                      <span className="tabela-sub">{p.email}</span>
-                    </td>
-                    <td>{ROTULO_PAPEL[p.papel]}</td>
-                    <td>
-                      <Badge variant={p.ativo ? 'success' : 'default'} className="text-[10px] py-0">
-                        {p.ativo ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-                {convites
-                  .filter((c) => !c.usado_em)
-                  .map((c) => (
-                    <tr key={c.id} className="opacity-70">
-                      <td>
-                        <span className="tabela-nome">{c.nome_completo || c.email}</span>
-                        <span className="tabela-sub">Convite pendente</span>
-                      </td>
-                      <td>{ROTULO_PAPEL[c.papel]}</td>
-                      <td>
-                        <Badge variant="default" className="text-[10px] py-0">
-                          Pendente
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <ul className="divide-y divide-(--color-border) text-sm">
+            {perfis.slice(0, 5).map((p) => (
+              <li key={p.id} className="py-2 flex justify-between gap-2">
+                <span className="truncate">{p.nome_completo || p.email}</span>
+                <span className="text-xs text-(--color-text-3) shrink-0">{ROTULO_PAPEL[p.papel]}</span>
+              </li>
+            ))}
+            {convites.filter((c) => !c.usado_em).slice(0, 3).map((c) => (
+              <li key={c.id} className="py-2 flex justify-between gap-2 opacity-70">
+                <span className="truncate">{c.email}</span>
+                <Badge variant="default" className="text-[10px]">Pendente</Badge>
+              </li>
+            ))}
             {perfis.length === 0 && convites.length === 0 && (
-              <div className="painel-vazio text-sm">Nenhum usuário vinculado.</div>
+              <li className="py-3 text-(--color-text-3)">Ninguém vinculado ainda.</li>
             )}
-          </div>
+          </ul>
         </div>
       </RevelarScroll>
     </SecaoPainel>

@@ -54,3 +54,30 @@ export function obterUrlBaseDoAmbiente(ambiente: AmbienteApp): string {
       return normalizarUrlBase(process.env.NEXT_PUBLIC_SITE_URL ?? dominioRaiz)
   }
 }
+
+/**
+ * Produção com URLs distintas (adm. / docs. / site): sem prefixo no path.
+ * Dev e preview com a mesma origem: mantém /adm, /docs.
+ */
+export function roteamentoPorSubdominio(): boolean {
+  if (process.env.NODE_ENV === 'development') return false
+
+  const admin = process.env.NEXT_PUBLIC_ADMIN_URL?.trim()
+  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim()
+  if (admin && site) {
+    try {
+      return new URL(normalizarUrlBase(admin)).host !== new URL(normalizarUrlBase(site)).host
+    } catch {
+      /* fallback abaixo */
+    }
+  }
+
+  return true
+}
+
+/** Domain do cookie para compartilhar sessão entre subdomínios (.vigmed.com.br) */
+export function dominioCookieCompartilhado(): string | undefined {
+  if (!roteamentoPorSubdominio()) return undefined
+  const raiz = process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br'
+  return `.${raiz}`
+}

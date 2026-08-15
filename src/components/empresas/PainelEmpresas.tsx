@@ -1,25 +1,16 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { Fragment, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, FolderOpen, Plus, Search } from 'lucide-react'
+import { Building2, ChevronDown, ChevronUp, FolderOpen, Plus, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CabecalhoPagina } from '@/components/layout/CabecalhoPagina'
 import { SecaoPainel } from '@/components/layout/SecaoPainel'
 import { RevelarScroll } from '@/components/ui/revelar-scroll'
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from '@/components/ui'
+import { Badge, Button, Input } from '@/components/ui'
 import { salvarEmpresa } from '@/lib/empresas/acoes'
-import { ROTAS } from '@/lib/rotas'
+import { hrefPublico, ROTAS } from '@/lib/rotas'
 import type { ConsumoArmazenamentoEmpresa, TotaisArmazenamentoPlataforma } from '@/lib/documentos/armazenamento'
 import { cn, formatarBytes, formatarCnpj } from '@/lib/utils'
 import type { Empresa, StatusEmpresa } from '@/types'
@@ -37,6 +28,16 @@ const ROTULO_STATUS: Record<StatusEmpresa, { rotulo: string; variant: 'success' 
   suspenso: { rotulo: 'Suspenso', variant: 'danger' },
 }
 
+const FORM_VAZIO = {
+  razaoSocial: '',
+  nomeFantasia: '',
+  cnpj: '',
+  email: '',
+  telefone: '',
+  responsavel: '',
+  status: 'ativo' as StatusEmpresa,
+}
+
 interface Props {
   empresasIniciais: Empresa[]
   consumoPorEmpresa: Record<string, ConsumoArmazenamentoEmpresa>
@@ -47,18 +48,10 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
   const router = useRouter()
   const [busca, definirBusca] = useState('')
   const [statusFiltro, definirStatusFiltro] = useState<StatusEmpresa | 'todos'>('todos')
-  const [dialogAberto, definirDialogAberto] = useState(false)
+  const [criando, definirCriando] = useState(false)
+  const [expandido, definirExpandido] = useState<string | null>(null)
   const [pendente, iniciarTransicao] = useTransition()
-
-  const [form, definirForm] = useState({
-    razaoSocial: '',
-    nomeFantasia: '',
-    cnpj: '',
-    email: '',
-    telefone: '',
-    responsavel: '',
-    status: 'ativo' as StatusEmpresa,
-  })
+  const [form, definirForm] = useState(FORM_VAZIO)
 
   const empresas = useMemo(() => {
     return empresasIniciais.filter((e) => {
@@ -74,17 +67,23 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
   }, [empresasIniciais, busca, statusFiltro])
 
   function abrirNova() {
-    definirForm({ razaoSocial: '', nomeFantasia: '', cnpj: '', email: '', telefone: '', responsavel: '', status: 'ativo' })
-    definirDialogAberto(true)
+    definirForm(FORM_VAZIO)
+    definirCriando(true)
   }
 
-  function aoSalvar() {
+  function fecharNova() {
+    definirCriando(false)
+    definirForm(FORM_VAZIO)
+  }
+
+  function aoSalvar(e: React.FormEvent) {
+    e.preventDefault()
     iniciarTransicao(async () => {
       const resultado = await salvarEmpresa({ ...form })
       if (resultado.erro) { toast.error(resultado.erro); return }
       toast.success('Empresa criada.')
-      definirDialogAberto(false)
-      if (resultado.id) router.push(ROTAS.adm.empresa(resultado.id))
+      fecharNova()
+      if (resultado.id) router.push(hrefPublico(ROTAS.adm.empresa(resultado.id)))
       else router.refresh()
     })
   }
@@ -93,31 +92,100 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
     <SecaoPainel>
       <CabecalhoPagina
         titulo="Empresas"
-        descricao="Clientes e consumo de armazenamento (VIGMED ilimitado vs cota das empresas)."
+        descricao="Clientes e consumo de armazenamento."
         acoes={
-          <Button variant="primary" size="sm" onClick={abrirNova}>
-            <Plus size={15} />
-            Nova empresa
-          </Button>
+          criando ? (
+            <Button variant="ghost" size="sm" onClick={fecharNova}>
+              <X size={15} />
+              Fechar
+            </Button>
+          ) : (
+            <Button variant="primary" size="sm" onClick={abrirNova}>
+              <Plus size={15} />
+              Nova empresa
+            </Button>
+          )
         }
       />
+
+      {criando && (
+        <RevelarScroll>
+          <form onSubmit={aoSalvar} className="painel-form-lateral mb-4">
+            <div className="flex items-center gap-2">
+              <Building2 size={16} className="text-(--color-text-2)" />
+              <span className="painel-form-titulo">Nova empresa</span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Input
+                label="Razão social"
+                value={form.razaoSocial}
+                onChange={(e) => definirForm({ ...form, razaoSocial: e.target.value })}
+                placeholder="Razão social Ltda"
+                required
+              />
+              <Input
+                label="Nome fantasia"
+                value={form.nomeFantasia}
+                onChange={(e) => definirForm({ ...form, nomeFantasia: e.target.value })}
+                placeholder="Nome comercial"
+                required
+              />
+              <Input
+                label="CNPJ"
+                value={form.cnpj}
+                onChange={(e) => definirForm({ ...form, cnpj: e.target.value })}
+                placeholder="00.000.000/0000-00"
+                required
+              />
+              <Input
+                label="E-mail"
+                type="email"
+                value={form.email}
+                onChange={(e) => definirForm({ ...form, email: e.target.value })}
+                placeholder="contato@empresa.com"
+              />
+              <Input
+                label="Telefone"
+                value={form.telefone}
+                onChange={(e) => definirForm({ ...form, telefone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+              <Input
+                label="Responsável"
+                value={form.responsavel}
+                onChange={(e) => definirForm({ ...form, responsavel: e.target.value })}
+                placeholder="Nome do responsável"
+              />
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={fecharNova} disabled={pendente}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" size="sm" loading={pendente}>
+                <Plus size={14} />
+                Criar empresa
+              </Button>
+            </div>
+          </form>
+        </RevelarScroll>
+      )}
 
       <RevelarScroll>
         <div className="grid gap-3 sm:grid-cols-3 mb-4">
           <div className="rounded-xl border border-(--color-border) bg-(--color-surface) p-4">
             <p className="text-xs text-(--color-text-3) uppercase tracking-wide">VIGMED (admin)</p>
-            <p className="mt-1 text-lg font-semibold text-(--color-text-1)">{formatarBytes(totaisArmazenamento.vigmed)}</p>
-            <p className="text-xs text-(--color-text-3)">Sem limite de upload</p>
+            <p className="mt-1 text-lg font-semibold">{formatarBytes(totaisArmazenamento.vigmed)}</p>
           </div>
           <div className="rounded-xl border border-(--color-border) bg-(--color-surface) p-4">
             <p className="text-xs text-(--color-text-3) uppercase tracking-wide">Cota empresas</p>
-            <p className="mt-1 text-lg font-semibold text-(--color-text-1)">{formatarBytes(totaisArmazenamento.empresa)}</p>
-            <p className="text-xs text-(--color-text-3)">de {formatarBytes(totaisArmazenamento.limiteEmpresas)} disponível</p>
+            <p className="mt-1 text-lg font-semibold">{formatarBytes(totaisArmazenamento.empresa)}</p>
+            <p className="text-xs text-(--color-text-3)">de {formatarBytes(totaisArmazenamento.limiteEmpresas)}</p>
           </div>
           <div className="rounded-xl border border-(--color-border) bg-(--color-surface) p-4">
-            <p className="text-xs text-(--color-text-3) uppercase tracking-wide">Total plataforma</p>
-            <p className="mt-1 text-lg font-semibold text-(--color-text-1)">{formatarBytes(totaisArmazenamento.total)}</p>
-            <p className="text-xs text-(--color-text-3)">VIGMED + arquivos das empresas</p>
+            <p className="text-xs text-(--color-text-3) uppercase tracking-wide">Total</p>
+            <p className="mt-1 text-lg font-semibold">{formatarBytes(totaisArmazenamento.total)}</p>
           </div>
         </div>
       </RevelarScroll>
@@ -128,7 +196,7 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
             <Search size={13} className="painel-busca-icone" />
             <input
               className="painel-busca-input"
-              placeholder="Razão social ou CNPJ..."
+              placeholder="Buscar..."
               value={busca}
               onChange={(e) => definirBusca(e.target.value)}
             />
@@ -154,13 +222,10 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
             <table className="painel-tabela">
               <thead className="painel-tabela-thead">
                 <tr>
+                  <th className="w-8"></th>
                   <th>Empresa</th>
-                  <th className="hidden md:table-cell">CNPJ</th>
                   <th>Status</th>
-                  <th className="text-right">VIGMED</th>
-                  <th className="text-right">Empresa</th>
-                  <th className="text-right">Total</th>
-                  <th className="hidden lg:table-cell" style={{ minWidth: '9rem' }}>Cota empresa</th>
+                  <th className="text-right">Uso</th>
                   <th className="text-right">Ações</th>
                 </tr>
               </thead>
@@ -174,43 +239,85 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
                   const pct = empresa.armazenamento_limite
                     ? Math.min((consumo.empresa / empresa.armazenamento_limite) * 100, 100)
                     : 0
+                  const aberto = expandido === empresa.id
                   return (
-                    <tr key={empresa.id} className={cn(empresa.status === 'inativo' && 'opacity-60')}>
-                      <td>
-                        <span className="tabela-nome">{empresa.nome_fantasia}</span>
-                        <span className="tabela-sub md:hidden">{formatarCnpj(empresa.cnpj)}</span>
-                      </td>
-                      <td className="hidden md:table-cell tabela-mono">{formatarCnpj(empresa.cnpj)}</td>
-                      <td>
-                        <Badge variant={status.variant} className="text-[10px] py-0">{status.rotulo}</Badge>
-                      </td>
-                      <td className="text-right tabela-mono">{formatarBytes(consumo.vigmed)}</td>
-                      <td className="text-right tabela-mono">{formatarBytes(consumo.empresa)}</td>
-                      <td className="text-right tabela-mono" style={{ fontWeight: 500, color: 'var(--color-text-1)' }}>
-                        {formatarBytes(consumo.total)}
-                      </td>
-                      <td className="hidden lg:table-cell">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          <div className="barra-uso">
-                            <div
-                              className={cn('barra-uso-fill', pct >= 90 && 'barra-uso-fill--alerta')}
-                              style={{ width: `${pct}%` }}
-                            />
+                    <Fragment key={empresa.id}>
+                      <tr className={cn(empresa.status === 'inativo' && 'opacity-60', aberto && 'border-l-2 border-l-(--color-accent)')}>
+                        <td>
+                          <button
+                            type="button"
+                            className="tabela-acao"
+                            onClick={() => definirExpandido(aberto ? null : empresa.id)}
+                            aria-label={aberto ? 'Recolher' : 'Expandir'}
+                          >
+                            {aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                        </td>
+                        <td>
+                          <span className="tabela-nome">{empresa.nome_fantasia}</span>
+                          <span className="tabela-sub">{formatarCnpj(empresa.cnpj)}</span>
+                        </td>
+                        <td>
+                          <Badge variant={status.variant} className="text-[10px] py-0">{status.rotulo}</Badge>
+                        </td>
+                        <td className="text-right">
+                          <span className="tabela-mono text-xs">{formatarBytes(consumo.total)}</span>
+                          <div className="barra-uso mt-1 ml-auto max-w-[6rem]">
+                            <div className={cn('barra-uso-fill', pct >= 90 && 'barra-uso-fill--alerta')} style={{ width: `${pct}%` }} />
                           </div>
-                          <span className="tabela-mono">{pct.toFixed(0)}% cota · {formatarBytes(consumo.empresa)} de {formatarBytes(empresa.armazenamento_limite)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="flex justify-end gap-1">
-                          <Link href={ROTAS.adm.empresa(empresa.id)} className="tabela-acao" title="Gerenciar empresa">
-                            <Building2 size={13} />
-                          </Link>
-                          <Link href={ROTAS.adm.empresaDocumentos(empresa.id)} className="tabela-acao" title="Documentos">
-                            <FolderOpen size={13} />
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-1">
+                            <Link href={hrefPublico(ROTAS.adm.empresa(empresa.id))} className="tabela-acao" title="Editar">
+                              <Building2 size={13} />
+                            </Link>
+                            <Link href={hrefPublico(ROTAS.adm.empresaDocumentos(empresa.id))} className="tabela-acao" title="Documentos">
+                              <FolderOpen size={13} />
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                      {aberto && (
+                        <tr>
+                          <td colSpan={5} className="bg-(--color-surface-2)/50 px-4 py-3">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">Razão social</p>
+                                <p>{empresa.razao_social}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">E-mail</p>
+                                <p>{empresa.email || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">Telefone</p>
+                                <p>{empresa.telefone || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">Responsável</p>
+                                <p>{empresa.responsavel || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">VIGMED</p>
+                                <p className="tabela-mono">{formatarBytes(consumo.vigmed)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-(--color-text-3)">Enviado pela empresa</p>
+                                <p className="tabela-mono">{formatarBytes(consumo.empresa)} / {formatarBytes(empresa.armazenamento_limite)}</p>
+                              </div>
+                              <div className="sm:col-span-2 flex flex-wrap gap-2 items-end">
+                                <Button variant="outline" size="sm" render={<Link href={hrefPublico(ROTAS.adm.empresa(empresa.id))} />}>
+                                  Gerenciar
+                                </Button>
+                                <Button variant="ghost" size="sm" render={<Link href={hrefPublico(ROTAS.adm.empresaDocumentos(empresa.id))} />}>
+                                  Documentos
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -225,39 +332,6 @@ export function PainelEmpresas({ empresasIniciais, consumoPorEmpresa, totaisArma
           )}
         </div>
       </RevelarScroll>
-
-      <Dialog open={dialogAberto} onOpenChange={definirDialogAberto}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nova empresa</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-2 py-1">
-            <Input label="Razão social" value={form.razaoSocial} onChange={(e) => definirForm({ ...form, razaoSocial: e.target.value })} />
-            <Input label="Nome fantasia" value={form.nomeFantasia} onChange={(e) => definirForm({ ...form, nomeFantasia: e.target.value })} />
-            <Input label="CNPJ" value={form.cnpj} onChange={(e) => definirForm({ ...form, cnpj: e.target.value })} />
-            <Input label="E-mail" type="email" value={form.email} onChange={(e) => definirForm({ ...form, email: e.target.value })} />
-            <Input label="Telefone" value={form.telefone} onChange={(e) => definirForm({ ...form, telefone: e.target.value })} />
-            <Input label="Responsável" value={form.responsavel} onChange={(e) => definirForm({ ...form, responsavel: e.target.value })} />
-            <div className="painel-campo">
-              <label className="painel-label">Status</label>
-              <select
-                className="painel-select"
-                style={{ width: '100%' }}
-                value={form.status}
-                onChange={(e) => definirForm({ ...form, status: e.target.value as StatusEmpresa })}
-              >
-                <option value="ativo">Ativo</option>
-                <option value="inativo">Inativo</option>
-                <option value="suspenso">Suspenso</option>
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => definirDialogAberto(false)}>Cancelar</Button>
-            <Button variant="primary" loading={pendente} onClick={aoSalvar}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </SecaoPainel>
   )
 }

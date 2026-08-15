@@ -49,6 +49,27 @@ export async function POST(requisicao: Request) {
     const origem = origemPublicacaoDocumento(perfil)
     const uploadAdmin = ehAdministrador(perfil.papel)
 
+    const { obterExtensoesPermitidas, obterTamanhoMaxUploadBytes } = await import(
+      '@/lib/configuracoes/acoes'
+    )
+    const tamanhoMax = await obterTamanhoMaxUploadBytes()
+    if (tamanhoArquivo > tamanhoMax) {
+      const mb = Math.round((tamanhoMax / (1024 * 1024)) * 10) / 10
+      return NextResponse.json(
+        { erro: `Arquivo acima do limite de ${mb} MB.` },
+        { status: 400 },
+      )
+    }
+
+    const ext = nomeArquivo.split('.').pop()?.toLowerCase() ?? ''
+    const extensoes = await obterExtensoesPermitidas()
+    if (!ext || !extensoes.includes(ext)) {
+      return NextResponse.json(
+        { erro: `Extensão .${ext || '?'} não permitida.` },
+        { status: 400 },
+      )
+    }
+
     if (!uploadAdmin) {
       for (const empresaId of idsEmpresas) {
         const { data: empresa } = await supabase

@@ -16,12 +16,34 @@ export interface RegistroAuditoria {
   empresas?: { nome_fantasia: string } | null
 }
 
-export async function listarAuditoria(filtros?: {
+export interface FiltrosAuditoria {
   busca?: string
   acao?: string
+  dataInicio?: string
+  dataFim?: string
   pagina?: number
   porPagina?: number
-}) {
+}
+
+function aplicarFiltros(
+  query: ReturnType<ReturnType<typeof criarClienteSupabaseServidor> extends Promise<infer C> ? never : never> | any,
+  filtros?: FiltrosAuditoria,
+) {
+  let q = query
+  if (filtros?.acao) q = q.eq('acao', filtros.acao)
+  if (filtros?.busca) {
+    q = q.or(`endereco_ip.ilike.%${filtros.busca}%,perfis.email.ilike.%${filtros.busca}%`)
+  }
+  if (filtros?.dataInicio) {
+    q = q.gte('criado_em', `${filtros.dataInicio}T00:00:00.000Z`)
+  }
+  if (filtros?.dataFim) {
+    q = q.lte('criado_em', `${filtros.dataFim}T23:59:59.999Z`)
+  }
+  return q
+}
+
+export async function listarAuditoria(filtros?: FiltrosAuditoria) {
   await exigirAutenticacao(['administrador'])
   const supabase = await criarClienteSupabaseServidor()
 
@@ -34,15 +56,12 @@ export async function listarAuditoria(filtros?: {
     .from('auditoria')
     .select('*, perfis(email, nome_completo), empresas(nome_fantasia)', { count: 'exact' })
     .order('criado_em', { ascending: false })
-    .range(de, ate)
 
-  if (filtros?.acao) query = query.eq('acao', filtros.acao)
-  if (filtros?.busca) {
-    query = query.or(`detalhes->>ip.ilike.%${filtros.busca}%,perfis.email.ilike.%${filtros.busca}%`)
-  }
+  query = aplicarFiltros(query, filtros).range(de, ate)
 
   const { data, count, error } = await query
   if (error) {
+    console.error('[listarAuditoria]', error.message)
     return { erro: 'Erro ao listar auditoria.', registros: [] as RegistroAuditoria[], total: 0, pagina, porPagina, totalPaginas: 0 }
   }
 
@@ -53,4 +72,27 @@ export async function listarAuditoria(filtros?: {
     porPagina,
     totalPaginas: Math.ceil((count ?? 0) / porPagina),
   }
+}
+
+/** Busca todos os registros filtrados para exportação (limite de segurança). */
+export async function listarAuditoriaParaExportacao(filtros?: Omit<FiltrosAuditoria, 'pagina' | 'porPagina'>) {
+  await exigirAutenticacao(['administrador'])
+  const supabase = await criarClienteSupabaseServidor()
+  const LIMITE = 5000
+
+  let query = supabase
+    .from('auditoria')
+    .select('*, perfis(email, nome_completo), empresas(nome_fantasia)')
+    .order('criado_em', { ascending: false })
+    .limit(LIMITE)
+
+  query = aplicarFiltros(query, filtros)
+
+  const { data, error } = await query
+  if (error) {
+    console.error('[listarAuditoriaParaExportacao]', error.message)
+    return { erro: 'Erro ao exportar auditoria.', registros: [] as RegistroAuditoria[] }
+  }
+
+  return { registros: (data ?? []) as RegistroAuditoria[] }
 }

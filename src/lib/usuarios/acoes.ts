@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { exigirAutenticacao, registrarAuditoria } from '@/lib/auth/sessao'
 import { normalizarEmail, type AmbienteConvite } from '@/lib/auth/convites'
-import { enviarEmailConviteAcesso } from '@/lib/auth/email-convite'
+import { excluirArquivoR2 } from '@/lib/r2/cliente'
+import { recalcularArmazenamentoEmpresa } from '@/lib/documentos/armazenamento'
 import { criarClienteSupabaseAdmin } from '@/lib/supabase/admin'
 import { ROTAS } from '@/lib/rotas'
 import type { PapelUsuario } from '@/types'
@@ -107,43 +108,164 @@ export async function convidarUsuario(dados: DadosConvite) {
     return { erro: erroConviteAmigavel(error.message, error.code) }
   }
 
-  const emailResultado = await enviarEmailConviteAcesso({
-    email,
-    nomeCompleto: dados.nomeCompleto,
-    ambiente: dados.ambiente,
-  })
-
-  if (!emailResultado.enviado) {
-    await admin.from('convites_acesso').delete().eq('id', convite.id)
-    return {
-      erro:
-        emailResultado.erro ??
-        'Convite não foi salvo: falha ao enviar e-mail. Configure SMTP em Supabase → Authentication → Email.',
-    }
-  }
-
   await registrarAuditoria({
     acao: 'criacao_usuario',
     usuarioId: perfil.id,
     empresaId: empresaId ?? undefined,
     recurso: 'convites_acesso',
     recursoId: convite.id,
-    detalhes: { email, papel: dados.papel, ambiente: dados.ambiente, emailEnviado: emailResultado.tipo },
+    detalhes: { email, papel: dados.papel, ambiente: dados.ambiente },
   })
 
   revalidatePath(ROTAS.adm.usuarios)
   revalidatePath(ROTAS.docs.usuarios)
   if (empresaId) revalidatePath(ROTAS.adm.empresa(empresaId))
 
-  const mensagemEmail =
-    emailResultado.tipo === 'acesso_novo'
-      ? 'E-mail enviado. O convidado pode abrir o link, entrar com Google ou ativar em /cadastro.'
-      : 'E-mail de acesso enviado. O usuário já possui conta e receberá um link para entrar.'
+  return {
+    sucesso: true,
+    mensagem: 'E-mail autorizado. O convidado pode criar a conta em /cadastro e entrar.',
+    convite,
+    linkAtivacao: `/cadastro?email=${encodeURIComponent(email)}`,
+  }
+}
+
+/** Remove convite pendente (ou já usado). Admin global ou admin da empresa do convite. */
+export async function excluirConvite(conviteId: string) {
+  const perfil = await exigirAutenticacao(['administrador', 'administrador_empresa'])
+  const admin = criarClienteSupabaseAdmin()
+
+  const { data: convite } = await admin
+    .from('convites_acesso')
+    .select('id, email, empresa_id, ambiente')
+    .eq('id', conviteId)
+    .maybeSingle()
+
+  if (!convite) return { erro: 'Convite não encontrado.' }
+
+  if (perfil.papel === 'administrador_empresa') {
+    if (convite.ambiente !== 'docs' || convite.empresa_id !== perfil.empresa_id) {
+      return { erro: 'Sem permissão para excluir este convite.' }
+    }
+  }
+
+  const { error } = await admin.from('convites_acesso').delete().eq('id', conviteId)
+  if (error) return { erro: 'Não foi possível excluir o convite.' }
+
+  await registrarAuditoria({
+    acao: 'exclusao',
+    usuarioId: perfil.id,
+    empresaId: convite.empresa_id ?? undefined,
+    recurso: 'convites_acesso',
+    recursoId: conviteId,
+    detalhes: { email: convite.email },
+  })
+
+  revalidatePath(ROTAS.adm.usuarios)
+  revalidatePath(ROTAS.docs.usuarios)
+  if (convite.empresa_id) revalidatePath(ROTAS.adm.empresa(convite.empresa_id))
+
+  return { sucesso: true }
+}
+
+/**
+ * Exclui usuário do Auth/perfis, remove arquivos que ele enviou (R2 + documento)
+ * e apaga convites do mesmo e-mail. Apenas administrador do sistema.
+ */
+export async function excluirUsuarioCompleto(usuarioId: string) {
+  const perfil = await exigirAutenticacao(['administrador'])
+
+  if (usuarioId === perfil.id) {
+    return { erro: 'Você não pode excluir a própria conta.' }
+  }
+
+  const admin = criarClienteSupabaseAdmin()
+
+  const { data: alvo } = await admin
+    .from('perfis')
+    .select('id, email, papel, empresa_id')
+    .eq('id', usuarioId)
+    .maybeSingle()
+
+  if (!alvo) return { erro: 'Usuário não encontrado.' }
+
+  if (alvo.papel === 'administrador_empresa' && alvo.empresa_id) {
+    const { count: outrosAdmins } = await admin
+      .from('perfis')
+      .select('id', { count: 'exact', head: true })
+      .eq('empresa_id', alvo.empresa_id)
+      .eq('papel', 'administrador_empresa')
+      .eq('ativo', true)
+      .neq('id', usuarioId)
+
+    if ((outrosAdmins ?? 0) === 0) {
+      return {
+        erro:
+          'Não é possível excluir o único administrador da empresa. ' +
+          'Promova outro usuário a administrador da empresa antes de excluir este.',
+      }
+    }
+  }
+
+  const { data: documentos } = await admin
+    .from('documentos')
+    .select('id, chave_arquivo, ativo, documento_empresas(empresa_id)')
+    .eq('enviado_por', usuarioId)
+
+  const empresasAfetadas = new Set<string>()
+
+  for (const doc of documentos ?? []) {
+    if (doc.chave_arquivo) {
+      try {
+        await excluirArquivoR2(doc.chave_arquivo)
+      } catch {
+        // Arquivo pode já ter sido removido
+      }
+    }
+
+    const vinculos = (doc.documento_empresas as { empresa_id: string }[] | null) ?? []
+    for (const v of vinculos) empresasAfetadas.add(v.empresa_id)
+
+    if (doc.ativo) {
+      await admin.from('documentos').update({ ativo: false }).eq('id', doc.id)
+    }
+  }
+
+  for (const empresaId of empresasAfetadas) {
+    await recalcularArmazenamentoEmpresa(empresaId)
+  }
+
+  if (alvo.email) {
+    await admin.from('convites_acesso').delete().ilike('email', normalizarEmail(alvo.email))
+  }
+
+  const { error: erroAuth } = await admin.auth.admin.deleteUser(usuarioId)
+  if (erroAuth) {
+    console.error('[excluirUsuarioCompleto]', erroAuth.message)
+    return { erro: 'Não foi possível excluir o usuário no Auth.' }
+  }
+
+  await registrarAuditoria({
+    acao: 'exclusao',
+    usuarioId: perfil.id,
+    empresaId: alvo.empresa_id ?? undefined,
+    recurso: 'usuario',
+    recursoId: usuarioId,
+    detalhes: {
+      email: alvo.email,
+      papel: alvo.papel,
+      documentosRemovidos: documentos?.length ?? 0,
+    },
+  })
+
+  revalidatePath(ROTAS.adm.usuarios)
+  revalidatePath(ROTAS.docs.usuarios)
+  revalidatePath(ROTAS.adm.documentos)
+  revalidatePath(ROTAS.docs.documentos)
+  if (alvo.empresa_id) revalidatePath(ROTAS.adm.empresa(alvo.empresa_id))
 
   return {
     sucesso: true,
-    mensagem: mensagemEmail,
-    convite,
+    mensagem: `Usuário excluído${documentos?.length ? ` e ${documentos.length} arquivo(s) relacionados removido(s)` : ''}.`,
   }
 }
 

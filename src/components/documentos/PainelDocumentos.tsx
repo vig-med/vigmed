@@ -31,7 +31,7 @@ interface DocumentoItem {
 
 interface Props {
   documentos: DocumentoItem[]
-  empresas: { id: string; nome_fantasia: string }[]
+  empresas: { id: string; nome_fantasia: string; armazenamento_limite?: number; consumoEmpresa?: number }[]
   categorias: { id: string; nome: string }[]
   modo: 'adm' | 'docs'
   perfilId?: string

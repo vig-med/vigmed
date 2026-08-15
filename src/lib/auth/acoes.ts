@@ -5,7 +5,7 @@ import { criarClienteSupabaseServidor } from '@/lib/supabase/servidor'
 import { registrarAuditoria } from '@/lib/auth/sessao'
 import { normalizarEmail, validarConviteParaCadastro } from '@/lib/auth/convites'
 import { validarPerfilAposAutenticacao } from '@/lib/auth/perfil-servidor'
-import { urlBaseAuthDaRequisicao, urlPainelNaOrigem } from '@/lib/auth/redirecionamento'
+import { urlBaseAuthDaRequisicao, urlPainelAposLogin } from '@/lib/auth/redirecionamento'
 import { ROTAS } from '@/lib/rotas'
 
 /** Login com e-mail e senha; redireciona ao painel conforme o papel */
@@ -44,10 +44,10 @@ export async function entrarComEmail(email: string, senha: string) {
   })
 
   const urlBase = await urlBaseAuthDaRequisicao()
-  redirect(urlPainelNaOrigem(validacao.perfil.papel, urlBase))
+  redirect(urlPainelAposLogin(validacao.perfil.papel, urlBase))
 }
 
-/** Cadastro com convite pré-autorizado */
+/** Cadastro com convite pré-autorizado; cria conta confirmada e já autentica */
 export async function cadastrarComEmail(
   email: string,
   senha: string,
@@ -58,26 +58,52 @@ export async function cadastrarComEmail(
   const convite = await validarConviteParaCadastro(emailNormalizado)
   if (!convite.valido) return { erro: convite.erro }
 
-  const supabase = await criarClienteSupabaseServidor()
+  const { criarClienteSupabaseAdmin } = await import('@/lib/supabase/admin')
+  const admin = criarClienteSupabaseAdmin()
 
-  const { data, error } = await supabase.auth.signUp({
+  const { data: criado, error: erroCriacao } = await admin.auth.admin.createUser({
     email: emailNormalizado,
     password: senha,
-    options: {
-      data: { nome_completo: nomeCompleto.trim() },
-    },
+    email_confirm: true,
+    user_metadata: { nome_completo: nomeCompleto.trim() },
   })
 
-  if (error) {
-    if (error.message.toLowerCase().includes('already registered')) {
-      return { erro: 'Este e-mail já possui conta. Entre com senha, Google ou o link enviado por e-mail.' }
+  if (erroCriacao) {
+    const msg = erroCriacao.message.toLowerCase()
+    if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      return { erro: 'Este e-mail já possui conta. Faça login em /entrar.' }
     }
-    return { erro: error.message }
+    return { erro: erroCriacao.message }
   }
 
-  if (!data.user) {
+  if (!criado.user) {
     return { erro: 'Não foi possível criar a conta.' }
   }
+
+  const supabase = await criarClienteSupabaseServidor()
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: emailNormalizado,
+    password: senha,
+  })
+
+  if (error || !data.user) {
+    return { erro: 'Conta criada, mas não foi possível entrar automaticamente. Faça login.' }
+  }
+
+  const validacao = await validarPerfilAposAutenticacao(
+    data.user.id,
+    data.user.email ?? emailNormalizado,
+  )
+
+  if ('erro' in validacao) {
+    await supabase.auth.signOut()
+    return { erro: validacao.erro }
+  }
+
+  await supabase
+    .from('perfis')
+    .update({ ultimo_login_em: new Date().toISOString() })
+    .eq('id', data.user.id)
 
   await registrarAuditoria({
     acao: 'criacao',
@@ -85,32 +111,20 @@ export async function cadastrarComEmail(
     detalhes: { metodo: 'email', ambiente: convite.convite.ambiente },
   })
 
-  return {
-    sucesso: true,
-    mensagem: 'Conta criada! Se a confirmação por e-mail estiver ativa, verifique sua caixa de entrada. Depois, faça login.',
-  }
+  await registrarAuditoria({
+    acao: 'login',
+    usuarioId: data.user.id,
+    detalhes: { metodo: 'email', origem: 'cadastro' },
+  })
+
+  const urlBase = await urlBaseAuthDaRequisicao()
+  redirect(urlPainelAposLogin(validacao.perfil.papel, urlBase))
 }
 
 export async function entrarComGoogle() {
-  const supabase = await criarClienteSupabaseServidor()
-  const urlBase = await urlBaseAuthDaRequisicao()
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${urlBase}/api/auth/callback`,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
-    },
-  })
-
-  if (error || !data.url) {
-    return { erro: 'Não foi possível iniciar login com Google.' }
+  return {
+    erro: 'Use o botão Continuar com Google na página de login.',
   }
-
-  redirect(data.url)
 }
 
 export async function sair() {

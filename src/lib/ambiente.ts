@@ -2,9 +2,16 @@ import { z } from 'zod'
 import {
   obterAmbienteDoHost as obterAmbienteDoHostEdge,
   obterUrlBaseDoAmbiente as obterUrlBaseDoAmbienteEdge,
+  roteamentoPorSubdominio as roteamentoPorSubdominioEdge,
+  dominioCookieCompartilhado as dominioCookieCompartilhadoEdge,
 } from '@/lib/ambiente-edge'
 
-export { obterAmbienteDoHostEdge as obterAmbienteDoHost, obterUrlBaseDoAmbienteEdge as obterUrlBaseDoAmbiente }
+export {
+  obterAmbienteDoHostEdge as obterAmbienteDoHost,
+  obterUrlBaseDoAmbienteEdge as obterUrlBaseDoAmbiente,
+  roteamentoPorSubdominioEdge as roteamentoPorSubdominio,
+  dominioCookieCompartilhadoEdge as dominioCookieCompartilhado,
+}
 
 /** Validação das variáveis de ambiente - falha cedo se algo estiver ausente */
 const esquemaAmbiente = z.object({

@@ -1,6 +1,16 @@
 import type { AmbienteApp } from '@/lib/ambiente'
+import {
+  obterUrlBaseDoAmbiente,
+  roteamentoPorSubdominio,
+} from '@/lib/ambiente-edge'
 
-/** Rotas centralizadas - evita strings duplicadas entre páginas, nav e server actions */
+export { roteamentoPorSubdominio } from '@/lib/ambiente-edge'
+
+/**
+ * Caminhos internos do App Router (sempre com /adm, /docs).
+ * Use em revalidatePath, layouts e proxy rewrite.
+ * Para Link / router.push use hrefPublico().
+ */
 export const ROTAS = {
   site: {
     home: '/site',
@@ -50,6 +60,27 @@ export const ROTAS = {
     perfil: '/docs/perfil',
   },
 } as const
+
+const PREFIXOS_TENANT = ['/adm', '/docs', '/site', '/blog'] as const
+
+/** Path visto no browser: /painel em prod (subdomínio), /adm/painel em dev */
+export function hrefPublico(caminhoInterno: string): string {
+  if (!roteamentoPorSubdominio()) return caminhoInterno
+
+  for (const prefixo of PREFIXOS_TENANT) {
+    if (caminhoInterno === prefixo) return '/'
+    if (caminhoInterno.startsWith(`${prefixo}/`)) {
+      return caminhoInterno.slice(prefixo.length) || '/'
+    }
+  }
+  return caminhoInterno
+}
+
+/** URL absoluta no host do ambiente (ex.: https://adm.vigmed.com.br/painel) */
+export function urlDoAmbiente(ambiente: AmbienteApp, caminhoInterno: string): string {
+  const base = obterUrlBaseDoAmbiente(ambiente)
+  return `${base}${hrefPublico(caminhoInterno)}`
+}
 
 const dominioRaiz = () => process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br'
 

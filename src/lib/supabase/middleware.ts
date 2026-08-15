@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { comCookieCompartilhado } from '@/lib/supabase/cookies-auth'
 
 /**
  * Atualiza a sessão Supabase a cada requisição.
@@ -27,7 +28,7 @@ export async function atualizarSessao(requisicao: NextRequest) {
           )
           resposta = NextResponse.next({ request: requisicao })
           cookiesParaDefinir.forEach(({ name, value, options }) =>
-            resposta.cookies.set(name, value, options),
+            resposta.cookies.set(name, value, comCookieCompartilhado(options)),
           )
         },
       },

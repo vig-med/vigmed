@@ -8,11 +8,15 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatarBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const unidades = ['B', 'KB', 'MB', 'GB', 'TB']
-  const indice = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, indice)).toFixed(1))} ${unidades[indice]}`
+  if (!bytes || bytes <= 0) return '0 MB'
+  const mb = bytes / (1024 * 1024)
+  if (mb < 1024) {
+    const casas = mb < 10 ? 2 : 1
+    return `${parseFloat(mb.toFixed(casas))} MB`
+  }
+  const gb = mb / 1024
+  const casas = gb < 10 ? 2 : 1
+  return `${parseFloat(gb.toFixed(casas))} GB`
 }
 
 export function formatarData(iso: string): string {
