@@ -68,7 +68,18 @@ export async function contarMensagensNaoLidas() {
   return { total: count ?? 0 }
 }
 
-export async function listarConversas() {
+export type ConversaListaItem = {
+  id: string
+  assunto: string | null
+  atualizado_em: string
+  criado_em?: string
+  empresa_id: string | null
+  ativo?: boolean
+  empresas: { nome_fantasia: string } | null
+  nao_lidas: number
+}
+
+export async function listarConversas(): Promise<{ conversas: ConversaListaItem[]; erro?: string }> {
   const perfil = await exigirAutenticacao()
   const admin = criarClienteSupabaseAdmin()
 
@@ -79,7 +90,7 @@ export async function listarConversas() {
     .order('atualizado_em', { ascending: false })
 
   if (!ehAdministrador(perfil.papel)) {
-    if (!perfil.empresa_id) return { conversas: [] as const }
+    if (!perfil.empresa_id) return { conversas: [] }
     query = query.eq('empresa_id', perfil.empresa_id)
   }
 
@@ -107,10 +118,25 @@ export async function listarConversas() {
   }
 
   return {
-    conversas: conversas.map((c) => ({
-      ...c,
-      nao_lidas: naoLidasPorConversa.get(c.id) ?? 0,
-    })),
+    conversas: conversas.map((c) => {
+      const empresaRaw = c.empresas as unknown
+      const empresas = (
+        Array.isArray(empresaRaw)
+          ? (empresaRaw[0] ?? null)
+          : (empresaRaw ?? null)
+      ) as { nome_fantasia: string } | null
+
+      return {
+        id: c.id as string,
+        assunto: (c.assunto as string | null) ?? null,
+        atualizado_em: c.atualizado_em as string,
+        criado_em: c.criado_em as string | undefined,
+        empresa_id: (c.empresa_id as string | null) ?? null,
+        ativo: Boolean(c.ativo),
+        empresas,
+        nao_lidas: naoLidasPorConversa.get(c.id) ?? 0,
+      }
+    }),
   }
 }
 
