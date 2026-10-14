@@ -5,7 +5,6 @@ import {
   roteamentoPorSubdominio as roteamentoPorSubdominioEdge,
   dominioCookieCompartilhado as dominioCookieCompartilhadoEdge,
   urlOrigemAuthCanonica as urlOrigemAuthCanonicaEdge,
-  hostAuthDivergeDoCanonico as hostAuthDivergeDoCanonicoEdge,
 } from '@/lib/ambiente-edge'
 
 export {
@@ -14,7 +13,6 @@ export {
   roteamentoPorSubdominioEdge as roteamentoPorSubdominio,
   dominioCookieCompartilhadoEdge as dominioCookieCompartilhado,
   urlOrigemAuthCanonicaEdge as urlOrigemAuthCanonica,
-  hostAuthDivergeDoCanonicoEdge as hostAuthDivergeDoCanonico,
 }
 
 /** Validação das variáveis de ambiente - falha cedo se algo estiver ausente */

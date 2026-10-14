@@ -82,24 +82,7 @@ export function dominioCookieCompartilhado(): string | undefined {
   return `.${raiz}`
 }
 
-/**
- * Origem canônica do site para OAuth/PKCE (deve bater com o domínio primário na Vercel).
- * Apex e www divergentes quebram o code_verifier se o redirect cair no host errado.
- */
+/** URL base do site (SITE_URL). Não usar para forçar redirect apex↔www — a Vercel já faz isso. */
 export function urlOrigemAuthCanonica(): string {
   return obterUrlBaseDoAmbiente('site')
-}
-
-/** True quando o host atual é apex/www do site mas difere do host em NEXT_PUBLIC_SITE_URL. */
-export function hostAuthDivergeDoCanonico(hostname: string): boolean {
-  const host = hostname.split(':')[0].toLowerCase()
-  const raiz = (process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? 'vigmed.com.br').toLowerCase()
-  if (host !== raiz && host !== `www.${raiz}`) return false
-
-  try {
-    const canonico = new URL(urlOrigemAuthCanonica()).hostname.toLowerCase()
-    return host !== canonico
-  } catch {
-    return false
-  }
 }

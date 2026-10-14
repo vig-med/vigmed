@@ -6,7 +6,6 @@ import {
   urlPainelAposLogin,
 } from '@/lib/auth/redirecionamento'
 import { ROTAS, urlDoAmbiente } from '@/lib/rotas'
-import { urlOrigemAuthCanonica } from '@/lib/ambiente-edge'
 import { comCookieCompartilhado } from '@/lib/supabase/cookies-auth'
 
 /** Copia cookies de sessão (PKCE) para o redirect final */
@@ -57,13 +56,17 @@ function criarSupabaseCallback(requisicao: NextRequest) {
   }
 }
 
+/** Usa o host da própria requisição (evita loop apex↔www se SITE_URL divergir da Vercel). */
 function urlBaseAuthCallback(requisicao: NextRequest): string {
-  try {
-    return urlOrigemAuthCanonica()
-  } catch {
-    const origem = new URL(requisicao.url)
-    return `${origem.protocol}//${origem.host}`
-  }
+  const host =
+    requisicao.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ??
+    requisicao.headers.get('host')
+  const proto =
+    requisicao.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ??
+    (host?.startsWith('localhost') ? 'http' : 'https')
+  if (host) return `${proto}://${host}`
+  const origem = new URL(requisicao.url)
+  return `${origem.protocol}//${origem.host}`
 }
 
 function mensagemErroSessao(mensagem?: string, temVerifier?: boolean): string {
